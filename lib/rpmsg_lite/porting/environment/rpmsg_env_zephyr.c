@@ -49,6 +49,10 @@
 #include "virtqueue.h"
 #include "rpmsg_compiler.h"
 
+// TODO: bring these in properly
+#include "MIMX8MN6_cm7.h"
+#define APP_MU_IRQ_PRIORITY (3U)
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -63,6 +67,8 @@
    Currently, only the first use-case is applicable/applied in RPMsg-Lite.
  */
 #define RL_ENV_MAX_MUTEX_COUNT (10)
+
+extern int32_t MU_M7_IRQHandler(void);
 
 static int32_t env_init_counter = 0;
 static struct k_sem env_sema    = {0};
@@ -87,6 +93,14 @@ static struct isr_info isr_table[ISR_COUNT];
 static int32_t env_in_isr(void)
 {
     return platform_in_isr();
+}
+
+
+ISR_DIRECT_DECLARE(zeph_mu_m7_handler)
+{
+    MU_M7_IRQHandler();
+    ISR_DIRECT_PM();
+    return 1;
 }
 
 /*!
@@ -114,7 +128,18 @@ int32_t env_init(void)
         k_sem_init(&env_sema, 0, 1);
         (void)memset(isr_table, 0, sizeof(isr_table));
         k_sched_unlock();
+
         retval = platform_init();
+        /* Here Zephyr overrides whatever platform_init() did with 
+        interrupt priorities, etc
+        */
+
+        // IRQ_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, MU_M7_IRQHandler, NULL, 0);
+        // irq_connect_dynamic(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zeph_mu_m7_handler, NULL, 0);
+        // IRQ_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zeph_mu_m7_handler, NULL, 0);
+        IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zeph_mu_m7_handler, 0);
+        irq_enable(MU_M7_IRQn);
+
         k_sem_give(&env_sema);
 
         return retval;
