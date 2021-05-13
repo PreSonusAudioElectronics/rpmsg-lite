@@ -134,9 +134,7 @@ int32_t env_init(void)
         interrupt priorities, etc
         */
 
-        // IRQ_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, MU_M7_IRQHandler, NULL, 0);
-        // irq_connect_dynamic(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zeph_mu_m7_handler, NULL, 0);
-        // IRQ_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zeph_mu_m7_handler, NULL, 0);
+        // Directly populate the M7 core vector table with the handler address, same as the freertos port
         IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zeph_mu_m7_handler, 0);
         irq_enable(MU_M7_IRQn);
 
