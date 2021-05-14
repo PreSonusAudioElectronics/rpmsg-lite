@@ -36,6 +36,17 @@
 #define RL_PLATFORM_IMX8MN_M7_USER_LINK_ID (0U)
 #define RL_PLATFORM_HIGHEST_LINK_ID        (15U)
 
+
+/* 
+	Shared memory base for RPMsg communication. 
+	TODO: put me somewhere sensible
+*/
+#define VDEV0_VRING_BASE	  (0xB8000000U)
+#define RESOURCE_TABLE_OFFSET (0xFF000)
+
+#define RPMSG_LITE_SHMEM_BASE		 (VDEV0_VRING_BASE)
+#define RPMSG_LITE_LINK_ID			(RL_PLATFORM_IMX8MN_M7_USER_LINK_ID)
+
 /* platform interrupt related functions */
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data);
 int32_t platform_deinit_interrupt(uint32_t vector_id);

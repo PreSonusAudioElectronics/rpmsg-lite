@@ -255,6 +255,8 @@ void *platform_patova(uint32_t addr)
  */
 int32_t platform_init(void)
 {
+    copyResourceTable();
+
     /*
      * Prepare for the MU Interrupt
      *  MU must be initialized before rpmsg init is called
