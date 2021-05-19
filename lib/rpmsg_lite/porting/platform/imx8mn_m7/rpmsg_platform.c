@@ -9,6 +9,7 @@
 #include <string.h>
 #include "rpmsg_platform.h"
 #include "rpmsg_env.h"
+#include "rsc_table.h"
 
 #include "fsl_device_registers.h"
 #include "fsl_mu.h"
