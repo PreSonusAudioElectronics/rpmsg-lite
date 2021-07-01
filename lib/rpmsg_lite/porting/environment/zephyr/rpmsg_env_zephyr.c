@@ -458,6 +458,11 @@ void env_sleep_msec(uint32_t num_msec)
     k_sleep(K_MSEC(num_msec));
 }
 
+void env_yield(void)
+{
+    k_yield();
+}
+
 /*!
  * env_register_isr
  *
