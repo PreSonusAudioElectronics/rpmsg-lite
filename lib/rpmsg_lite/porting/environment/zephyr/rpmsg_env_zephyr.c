@@ -49,8 +49,6 @@
 #include "virtqueue.h"
 #include "rpmsg_compiler.h"
 
-// TODO: bring these in properly
-#include "MIMX8MN6_cm7.h"
 #define APP_MU_IRQ_PRIORITY (3U)
 
 #include <stdlib.h>
@@ -68,7 +66,7 @@
  */
 #define RL_ENV_MAX_MUTEX_COUNT (10)
 
-extern int32_t MU_M7_IRQHandler(void);
+extern int32_t MU_IRQ_HANDLER(void);
 
 static int32_t env_init_counter = 0;
 static struct k_sem env_sema    = {0};
@@ -96,9 +94,9 @@ static int32_t env_in_isr(void)
 }
 
 
-ISR_DIRECT_DECLARE(zeph_mu_m7_handler)
+ISR_DIRECT_DECLARE(zephMuHandler)
 {
-    MU_M7_IRQHandler();
+    MU_IRQ_HANDLER();
     ISR_DIRECT_PM();
     return 1;
 }
@@ -135,7 +133,7 @@ int32_t env_init(void)
         */
 
         // Directly populate the M7 core vector table with the handler address, same as the freertos port
-        IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zeph_mu_m7_handler, 0);
+        IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
         irq_enable(MU_M7_IRQn);
 
         k_sem_give(&env_sema);
