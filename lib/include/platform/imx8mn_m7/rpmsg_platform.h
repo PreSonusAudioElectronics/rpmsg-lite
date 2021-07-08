@@ -38,11 +38,10 @@
 #define RL_PLATFORM_HIGHEST_LINK_ID        (15U)
 
 
-/* 
-	Shared memory base for RPMsg communication. 
-	TODO: put me somewhere sensible
-*/
+#ifndef VDEV0_VRING_BASE
 #define VDEV0_VRING_BASE	  (0xB8000000U)
+#endif
+
 #define RESOURCE_TABLE_OFFSET (0xFF000)
 
 #define RPMSG_LITE_SHMEM_BASE		 (VDEV0_VRING_BASE)
