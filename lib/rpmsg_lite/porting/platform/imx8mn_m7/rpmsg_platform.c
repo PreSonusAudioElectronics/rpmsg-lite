@@ -9,6 +9,7 @@
 #include <string.h>
 #include "rpmsg_platform.h"
 #include "rpmsg_env.h"
+#include "rsc_table.h"
 
 #include "fsl_device_registers.h"
 #include "fsl_mu.h"
@@ -255,6 +256,8 @@ void *platform_patova(uint32_t addr)
  */
 int32_t platform_init(void)
 {
+    copyResourceTable();
+
     /*
      * Prepare for the MU Interrupt
      *  MU must be initialized before rpmsg init is called

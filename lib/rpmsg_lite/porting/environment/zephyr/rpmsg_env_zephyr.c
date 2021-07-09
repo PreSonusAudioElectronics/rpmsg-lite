@@ -49,6 +49,8 @@
 #include "virtqueue.h"
 #include "rpmsg_compiler.h"
 
+#define APP_MU_IRQ_PRIORITY (3U)
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -63,6 +65,8 @@
    Currently, only the first use-case is applicable/applied in RPMsg-Lite.
  */
 #define RL_ENV_MAX_MUTEX_COUNT (10)
+
+extern int32_t MU_IRQ_HANDLER(void);
 
 static int32_t env_init_counter = 0;
 static struct k_sem env_sema    = {0};
@@ -87,6 +91,14 @@ static struct isr_info isr_table[ISR_COUNT];
 static int32_t env_in_isr(void)
 {
     return platform_in_isr();
+}
+
+
+ISR_DIRECT_DECLARE(zephMuHandler)
+{
+    MU_IRQ_HANDLER();
+    ISR_DIRECT_PM();
+    return 1;
 }
 
 /*!
@@ -114,7 +126,16 @@ int32_t env_init(void)
         k_sem_init(&env_sema, 0, 1);
         (void)memset(isr_table, 0, sizeof(isr_table));
         k_sched_unlock();
+
         retval = platform_init();
+        /* Here Zephyr overrides whatever platform_init() did with 
+        interrupt priorities, etc
+        */
+
+        // Directly populate the M7 core vector table with the handler address, same as the freertos port
+        IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
+        irq_enable(MU_M7_IRQn);
+
         k_sem_give(&env_sema);
 
         return retval;
@@ -433,6 +454,11 @@ void env_release_sync_lock(void *lock)
 void env_sleep_msec(uint32_t num_msec)
 {
     k_sleep(K_MSEC(num_msec));
+}
+
+void env_yield(void)
+{
+    k_yield();
 }
 
 /*!

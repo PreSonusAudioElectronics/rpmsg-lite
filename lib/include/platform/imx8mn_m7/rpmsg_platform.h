@@ -10,6 +10,7 @@
 #define RPMSG_PLATFORM_H_
 
 #include <stdint.h>
+#include "MIMX8MN6_cm7.h"
 
 /* RPMSG MU channel index */
 #define RPMSG_MU_CHANNEL (1)
@@ -35,6 +36,19 @@
 
 #define RL_PLATFORM_IMX8MN_M7_USER_LINK_ID (0U)
 #define RL_PLATFORM_HIGHEST_LINK_ID        (15U)
+
+
+#ifndef VDEV0_VRING_BASE
+#define VDEV0_VRING_BASE	  (0xB8000000U)
+#endif
+
+#define RESOURCE_TABLE_OFFSET (0xFF000)
+
+#define RPMSG_LITE_SHMEM_BASE		 (VDEV0_VRING_BASE)
+#define RPMSG_LITE_LINK_ID			(RL_PLATFORM_IMX8MN_M7_USER_LINK_ID)
+
+// For environment port
+#define MU_IRQ_HANDLER (MU_M7_IRQHandler)
 
 /* platform interrupt related functions */
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data);

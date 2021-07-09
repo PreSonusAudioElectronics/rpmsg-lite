@@ -338,6 +338,13 @@ void env_release_sync_lock(void *lock);
 void env_sleep_msec(uint32_t num_msec);
 
 /*!
+ * env_yield
+ *
+ * Yields execution back to the scheduler 
+ */
+void env_yield(void);
+
+/*!
  * env_register_isr
  *
  * Registers interrupt handler data for the given interrupt vector.
