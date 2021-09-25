@@ -79,6 +79,11 @@
 
 #include <stdio.h>
 #include <stdint.h>
+
+#if defined __cplusplus
+extern "C" {
+#endif
+
 #include "rpmsg_default_config.h"
 #include "rpmsg_platform.h"
 
@@ -573,6 +578,10 @@ int32_t env_init_interrupt(void *env, int32_t vq_id, void *isr_data);
  * @return        Execution status, 0 on success
  */
 int32_t env_deinit_interrupt(void *env, int32_t vq_id);
+#endif
+
+#if defined __cplusplus
+}
 #endif
 
 #endif /* RPMSG_ENV_H_ */

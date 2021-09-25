@@ -2,6 +2,7 @@
     "files.associations": {
         "rpmsg_platform.h": "c",
         "rsc_table.h": "c",
-        "remoteproc.h": "c"
+        "remoteproc.h": "c",
+        "rpmsg_lite.h": "c"
     }
 }

@@ -31,6 +31,10 @@
  * $FreeBSD$
  */
 
+#if defined __cplusplus
+extern "C" {
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include "rpmsg_default_config.h"
@@ -243,5 +247,9 @@ uint32_t virtqueue_get_desc_size(struct virtqueue *vq);
 uint32_t virtqueue_get_buffer_length(struct virtqueue *vq, uint16_t idx);
 
 void vq_ring_init(struct virtqueue *vq);
+
+#if defined __cplusplus
+}
+#endif
 
 #endif /* VIRTQUEUE_H_ */
