@@ -14,9 +14,10 @@ class ThreadsafeQueue
 public:
 
 	ThreadsafeQueue(uint32_t nElements, size_t elementSize):
-	elementSize(elementSize), nElements(nElements)
+	elementSize(elementSize), nElements(nElements),
+	mem(std::make_unique<char[]>(elementSize))
 	{
-		mem = std::make_unique<char[]>(elementSize);
+		// mem = std::make_unique<char[]>(elementSize);
 	}
 
 	int put( void *msg )

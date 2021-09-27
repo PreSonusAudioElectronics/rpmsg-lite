@@ -18,3 +18,7 @@ if("${TARGET_ENVIRONMENT}" STREQUAL "zephyr")
 		${RPMSG_LIB_ROOT}/lib/rpmsg_lite/porting/environment/zephyr/rpmsg_env_zephyr.c
 	)
 endif()
+
+
+target_sources( ${TARGET_NAME} PRIVATE ${RPMSG_COMMON_SRCS})
+target_include_directories( ${TARGET_NAME} PUBLIC ${RPMSG_COMMON_INCS})

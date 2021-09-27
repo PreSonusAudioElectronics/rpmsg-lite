@@ -100,7 +100,7 @@ extern "C" {
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 int32_t env_init(void **env_context, void *env_init_data);
 #else
-int32_t env_init(void);
+int32_t env_init(void *shmem_addr);
 #endif
 
 /*!

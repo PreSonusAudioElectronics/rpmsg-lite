@@ -254,9 +254,9 @@ void *platform_patova(uint32_t addr)
  *
  * platform/environment init
  */
-int32_t platform_init(void)
+int32_t platform_init(void *shmem_addr)
 {
-    copyResourceTable();
+    copyResourceTable(shmem_addr);
 
     /*
      * Prepare for the MU Interrupt

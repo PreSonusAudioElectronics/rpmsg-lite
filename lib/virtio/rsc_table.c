@@ -27,7 +27,7 @@ __attribute__((section(".resource_table")))
 #error Compiler not supported!
 #endif
 
-const struct remote_resource_table resources = {
+static struct remote_resource_table resources = {
     /* Version */
     1,
 
@@ -58,17 +58,20 @@ const struct remote_resource_table resources = {
     },
 
     /* Vring rsc entry - part of vdev rsc entry */
-    {VDEV0_VRING_BASE, VRING_ALIGN, RL_BUFFER_COUNT, 0, 0},
-    {VDEV0_VRING_BASE + VRING_SIZE, VRING_ALIGN, RL_BUFFER_COUNT, 1, 0},
+    {0, VRING_ALIGN, RL_BUFFER_COUNT, 0, 0},
+    {0 + VRING_SIZE, VRING_ALIGN, RL_BUFFER_COUNT, 1, 0},
 };
 
-void copyResourceTable(void)
+void copyResourceTable(void *shmem_addr)
 {
     /*
      * Resource table should be copied to VDEV0_VRING_BASE + RESOURCE_TABLE_OFFSET.
      * VDEV0_VRING_BASE is temperorily kept for backward compatibility, will be
      * removed in future release
      */
-    memcpy((void *)VDEV0_VRING_BASE, &resources, sizeof(resources));
-    memcpy((void *)(VDEV0_VRING_BASE + RESOURCE_TABLE_OFFSET), &resources, sizeof(resources));
+
+    resources.user_vring0.da = (uint32_t)shmem_addr;
+    resources.user_vring1.da = ((uint32_t)shmem_addr + VRING_SIZE);
+    memcpy(shmem_addr, &resources, sizeof(resources));
+    memcpy( ((char*)shmem_addr + RESOURCE_TABLE_OFFSET) , &resources, sizeof(resources));
 }

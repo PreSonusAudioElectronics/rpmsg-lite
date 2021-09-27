@@ -75,7 +75,7 @@ static int32_t env_in_isr(void)
  * Initializes OS/BM environment.
  *
  */
-int32_t env_init(void)
+int32_t env_init(void *shmem_addr)
 {
 	int32_t retval;
 	std::mutex mutex;
@@ -96,7 +96,7 @@ int32_t env_init(void)
 		(void)memset(isr_table, 0, sizeof(isr_table));
 		mutex.unlock();
 
-		retval = platform_init();
+		retval = platform_init(shmem_addr);
 		/* Here Zephyr overrides whatever platform_init() did with 
 		interrupt priorities, etc
 		*/

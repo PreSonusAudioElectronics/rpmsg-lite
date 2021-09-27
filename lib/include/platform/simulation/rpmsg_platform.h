@@ -38,9 +38,9 @@
 #define RL_PLATFORM_HIGHEST_LINK_ID        (15U)
 
 
-#ifndef VDEV0_VRING_BASE
-#define VDEV0_VRING_BASE	  (0xB8000000U)
-#endif
+// #ifndef VDEV0_VRING_BASE
+// #define VDEV0_VRING_BASE	  (0xB8000000U)
+// #endif
 
 #define RESOURCE_TABLE_OFFSET (0xFF000)
 
@@ -69,7 +69,8 @@ uint32_t platform_vatopa(void *addr);
 void *platform_patova(uint32_t addr);
 
 /* platform init/deinit */
-int32_t platform_init(void);
+int32_t platform_init(void *shmem_addr);
+
 int32_t platform_deinit(void);
 
 #endif /* RPMSG_PLATFORM_H_ */

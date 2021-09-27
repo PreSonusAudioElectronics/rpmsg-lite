@@ -1,7 +1,7 @@
 
 # rpmsg-lite common source files
-message("TARGET_NAME = ${TARGET_NAME}")
-target_sources(${TARGET_NAME} PRIVATE
+message("rpmsg-lite TARGET_NAME = ${TARGET_NAME}")
+set( RPMSG_COMMON_SRCS
 	${RPMSG_LIB_ROOT}/lib/common/llist.c
 	${RPMSG_LIB_ROOT}/lib/rpmsg_lite/rpmsg_lite.c
 	${RPMSG_LIB_ROOT}/lib/rpmsg_lite/rpmsg_ns.c
@@ -11,6 +11,6 @@ target_sources(${TARGET_NAME} PRIVATE
 )
 
 # rpmsg-lite common include paths
-target_include_directories(${TARGET_NAME} PUBLIC
+set( RPMSG_COMMON_INCS
 	${RPMSG_LIB_ROOT}/lib/include
 )

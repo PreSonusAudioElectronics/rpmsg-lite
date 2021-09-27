@@ -107,7 +107,7 @@ ISR_DIRECT_DECLARE(zephMuHandler)
  * Initializes OS/BM environment.
  *
  */
-int32_t env_init(void)
+int32_t env_init(void *shmem_addr)
 {
     int32_t retval;
     k_sched_lock(); /* stop scheduler */
@@ -127,7 +127,7 @@ int32_t env_init(void)
         (void)memset(isr_table, 0, sizeof(isr_table));
         k_sched_unlock();
 
-        retval = platform_init();
+        retval = platform_init(shmem_addr);
         /* Here Zephyr overrides whatever platform_init() did with 
         interrupt priorities, etc
         */
