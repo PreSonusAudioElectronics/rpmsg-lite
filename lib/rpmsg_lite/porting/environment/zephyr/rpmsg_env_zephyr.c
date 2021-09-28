@@ -313,7 +313,7 @@ void env_wmb(void)
  *
  * @param address
  */
-uint32_t env_map_vatopa(void *address)
+uintptr_t env_map_vatopa(void *address)
 {
     return platform_vatopa(address);
 }
@@ -323,7 +323,7 @@ uint32_t env_map_vatopa(void *address)
  *
  * @param address
  */
-void *env_map_patova(uint32_t address)
+void *env_map_patova(uintptr_t address)
 {
     return platform_patova(address);
 }
