@@ -275,7 +275,7 @@ void *virtqueue_get_buffer(struct virtqueue *vq, uint32_t *len, uint16_t *idx)
     VQUEUE_IDLE(vq, used_read);
 
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-    return env_map_patova(vq->env, ((uint32_t)(vq->vq_ring.desc[desc_idx].addr)));
+    return env_map_patova(vq->env, ((uintptr_t)(vq->vq_ring.desc[desc_idx].addr)));
 #else
     return env_map_patova((uintptr_t)(vq->vq_ring.desc[desc_idx].addr));
 #endif
