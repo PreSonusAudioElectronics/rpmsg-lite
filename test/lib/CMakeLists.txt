@@ -4,6 +4,7 @@ set( TARGET_NAME test_rpmsg_lite )
 add_executable(
 	${TARGET_NAME}
 	test_rpmsg_lite.cpp
+	rpmsgtesters.cpp
 	${RPMSG_COMMON_SRCS}
 	${RPMSG_TEST_SOURCES}
 )
@@ -11,6 +12,7 @@ add_executable(
 target_include_directories(${TARGET_NAME} PUBLIC
 	${RPMSG_COMMON_INCS}
 	${RPMSG_TEST_INCLUDES}
+	${CMAKE_CURRENT_LIST_DIR}
 )
 
 target_link_libraries(${TARGET_NAME}

@@ -5,6 +5,7 @@
 #include "rsc_table.h"
 #include "rpmsg_env_linux.h"
 #include "threadsafequeue.h"
+#include "rpmsgtesters.h"
 
 #include <gtest/gtest.h>
 
@@ -17,13 +18,15 @@
 #include <cstring>
 
 
-void *lastAllocatedAddress = 0;
-void *memBase = nullptr;
+static void *memBase = nullptr;
 
-std::mutex remoteReadyMutex;
+/**
+ * @brief Since we are simulating multiple different instances running on 
+ * different processors by simply spawning a thread for each instance, this 
+ * mutex provides a global lock so the threads don't stomp on each other
+ */
 std::mutex rpmsgMutex;
-std::condition_variable remoteReadyCondition;
-bool remoteReady = false;
+
 
 static constexpr unsigned kQueueMsgSize = 128;
 static constexpr char const * kMsgLinkIsUp = "linkIsUp";
@@ -42,7 +45,7 @@ ThreadsafeQueue master2Main(4, kQueueMsgSize);
 
 // Forward declarations
 void remoteThreadFunc(void *sharedMemBase);
-void masterThreadFunc(void *sharedMemBase, uint32_t shMemSize);
+void masterThreadFunc(void *sharedMemBase, uint32_t shMemSize, bool* remoteReady);
 
 TEST(TestRpmsgLite, CanInstantiateRemote)
 {
@@ -84,96 +87,35 @@ TEST(TestRpmsgLite, CanTalkBothWays)
 	static const uint32_t kMemToAllocate = ( RESOURCE_TABLE_OFFSET + sizeof(remote_resource_table) + 16);
 	auto sharedMemBase = new char[kMemToAllocate];
 
-	// start the remote instance thread
-	auto remoteThread = std::thread( remoteThreadFunc, (void*)sharedMemBase );
+	bool remote0Ready = false;
 
-	// wait for remote to be ready
-	std::this_thread::sleep_for(std::chrono::milliseconds(10));
-	std::unique_lock<std::mutex> lk(remoteReadyMutex);
-	lk.unlock();
+	auto remoteTester0 = std::make_unique<RpmsgRemoteTester>(
+		sharedMemBase, 0, 30, kEpt1AnnounceString, kMasterToRemoteHello,
+		remote0Ready, rpmsgMutex );
+	
+	ASSERT_EQ( remoteTester0.get()->start(), 0 );
 
-	printf("we made it this far\n");
+	// give remote some time to setup
+	std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
 
 	// once remote is up and waiting, start the master thread
-	auto masterThread = std::thread( masterThreadFunc, (void*)sharedMemBase, kMemToAllocate );
+	auto masterThread = std::thread( masterThreadFunc, (void*)sharedMemBase, kMemToAllocate,
+		&remote0Ready );
 
-	// wait for notification that the remote thread has been kicked by the master
-	int status = -1;
-	static char buffer [kQueueMsgSize];
-	// polling, should be ASIO, but performance not critical here
-	while( status < 0 )
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(500));
-		status = remote2Main.get(buffer);
-		if( status >= 0 )
-		{
-			if( std::strncmp(buffer, kMsgLinkIsUp,  kMsgSizeLinkIsUp) != 0 )
-			{
-				status = -1;
-			}
-		}
-	}
 
 	// Send from remote to master and verify the received message
 
 	// Send from master to remote and verify the received message
 
-
-	remoteThread.join();
+	remoteTester0.get()->stop();
 	masterThread.join();
 
 }
 
 
-void remoteThreadFunc(void *sharedMemBase)
-{
-	std::unique_lock<std::mutex> lk(remoteReadyMutex);
 
-	rpmsg_env_init_t remoteEnv = { sharedMemBase, nullptr };
-
-	rpmsgMutex.lock();
-	static auto remoteInstance = rpmsg_lite_remote_init( sharedMemBase, 0, 0, &remoteEnv);
-	rpmsgMutex.unlock();
-
-	ASSERT_NE( remoteInstance, nullptr );
-
-	remoteReady = true;
-	lk.unlock();
-
-	int rpStat = 0;
-	while( 0 == rpStat )
-	{
-		rpmsgMutex.lock();
-		rpStat = rpmsg_lite_is_link_up( remoteInstance );
-		rpmsgMutex.unlock();
-		env_sleep_msec(10);
-	}
-
-	while( remote2Main.put( (void*)(kMsgLinkIsUp) ) != 0)
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-	}
-
-	printf("remote link is up\n");
-
-	rpmsgMutex.lock();
-	auto rpmsgQueue1 = rpmsg_queue_create(remoteInstance);
-	rpmsgMutex.unlock();
-	ASSERT_NE( rpmsgQueue1, nullptr );
-
-	rpmsgMutex.lock();
-	auto ept1 = rpmsg_lite_create_ept(remoteInstance, kEpt1Address, rpmsg_queue_rx_cb, rpmsgQueue1);
-	rpmsgMutex.unlock();
-	ASSERT_NE( ept1, nullptr );
-
-	rpmsgMutex.lock();
-	rpmsg_ns_announce(remoteInstance, ept1, kEpt1AnnounceString, RL_NS_CREATE);
-	rpmsgMutex.unlock();
-
-	printf("remote announce string sent\n");
-}
-
-void masterThreadFunc(void *sharedMemBase, uint32_t shMemSize)
+void masterThreadFunc(void *sharedMemBase, uint32_t shMemSize, bool* remoteReady)
 {
 	printf("Starting master thread...\n");
 
@@ -194,15 +136,19 @@ void masterThreadFunc(void *sharedMemBase, uint32_t shMemSize)
 	rpmsgMutex.unlock();
 	ASSERT_NE( ept1, nullptr );
 
-	// give the remote a chance to set up its endpoint before sending
-	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+	// wait until remote is good to go
+	while( !(*remoteReady) )
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+
+	printf("master sending '%s' to remote...\n", kMasterToRemoteHello);
 
 	rpmsgMutex.lock();
 	int status = rpmsg_lite_send(masterInstance, ept1, kEpt1Address, (char*)kMasterToRemoteHello, kMsgSizeMasterToRemoteHello, RL_BLOCK );
 	rpmsgMutex.unlock();
 
-	printf("um...\n");
-
+	printf("master thread terminating...\n");
 }
 
 
