@@ -16,10 +16,12 @@
 #include <chrono>
 #include <cstring>
 
+
 void *lastAllocatedAddress = 0;
 void *memBase = nullptr;
 
 std::mutex remoteReadyMutex;
+std::mutex rpmsgMutex;
 std::condition_variable remoteReadyCondition;
 bool remoteReady = false;
 
@@ -52,7 +54,7 @@ TEST(TestRpmsgLite, CanInstantiateRemote)
 	rpmsg_lite_instance * inst = rpmsg_lite_remote_init( vringMem, 0, 0, &remoteEnv);
 
 	ASSERT_NE(inst, nullptr);
-	
+
 	auto status = rpmsg_lite_deinit(inst);
 	ASSERT_GE( status, 0);
 
@@ -128,15 +130,22 @@ void remoteThreadFunc(void *sharedMemBase)
 	std::unique_lock<std::mutex> lk(remoteReadyMutex);
 
 	rpmsg_env_init_t remoteEnv = { sharedMemBase, nullptr };
+
+	rpmsgMutex.lock();
 	static auto remoteInstance = rpmsg_lite_remote_init( sharedMemBase, 0, 0, &remoteEnv);
+	rpmsgMutex.unlock();
 
 	ASSERT_NE( remoteInstance, nullptr );
 
 	remoteReady = true;
 	lk.unlock();
 
-	while( 0 == rpmsg_lite_is_link_up( remoteInstance ) )
+	int rpStat = 0;
+	while( 0 == rpStat )
 	{
+		rpmsgMutex.lock();
+		rpStat = rpmsg_lite_is_link_up( remoteInstance );
+		rpmsgMutex.unlock();
 		env_sleep_msec(10);
 	}
 
@@ -145,13 +154,23 @@ void remoteThreadFunc(void *sharedMemBase)
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 
+	printf("remote link is up\n");
+
+	rpmsgMutex.lock();
 	auto rpmsgQueue1 = rpmsg_queue_create(remoteInstance);
+	rpmsgMutex.unlock();
 	ASSERT_NE( rpmsgQueue1, nullptr );
 
+	rpmsgMutex.lock();
 	auto ept1 = rpmsg_lite_create_ept(remoteInstance, kEpt1Address, rpmsg_queue_rx_cb, rpmsgQueue1);
+	rpmsgMutex.unlock();
 	ASSERT_NE( ept1, nullptr );
 
+	rpmsgMutex.lock();
 	rpmsg_ns_announce(remoteInstance, ept1, kEpt1AnnounceString, RL_NS_CREATE);
+	rpmsgMutex.unlock();
+
+	printf("remote announce string sent\n");
 }
 
 void masterThreadFunc(void *sharedMemBase, uint32_t shMemSize)
@@ -159,19 +178,31 @@ void masterThreadFunc(void *sharedMemBase, uint32_t shMemSize)
 	printf("Starting master thread...\n");
 
 	rpmsg_env_init_t masterEnv = { sharedMemBase, nullptr };
+	rpmsgMutex.lock();
 	static auto masterInstance = rpmsg_lite_master_init( sharedMemBase, shMemSize, 0, 
 		RL_NO_FLAGS, &masterEnv );
-
+	rpmsgMutex.unlock();
 	ASSERT_NE( masterInstance, nullptr );
 
+	rpmsgMutex.lock();
 	auto masterQueue1 = rpmsg_queue_create(masterInstance);
+	rpmsgMutex.unlock();
 	ASSERT_NE( masterQueue1, nullptr );
 
+	rpmsgMutex.lock();
 	auto ept1 = rpmsg_lite_create_ept( masterInstance, kEpt1Address, rpmsg_queue_rx_cb, masterQueue1 );
+	rpmsgMutex.unlock();
 	ASSERT_NE( ept1, nullptr );
 
+	// give the remote a chance to set up its endpoint before sending
+	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+	rpmsgMutex.lock();
 	int status = rpmsg_lite_send(masterInstance, ept1, kEpt1Address, (char*)kMasterToRemoteHello, kMsgSizeMasterToRemoteHello, RL_BLOCK );
+	rpmsgMutex.unlock();
 
 	printf("um...\n");
 
 }
+
+

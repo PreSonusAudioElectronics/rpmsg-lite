@@ -69,7 +69,7 @@ typedef struct env_context
         }
 
         isr_table[vector_id].vq = vq;
-        isr_table[vector_id].registered = false;
+        isr_table[vector_id].registered = true;
         if( highest_registered_vector_id < vector_id )
         {
             highest_registered_vector_id = vector_id;
@@ -199,6 +199,10 @@ int32_t env_deinit(void *env_context)
     env_context_t *ctx = static_cast<env_context_t *>(env_context);
     RL_ASSERT( env_context != nullptr );
     platform_deinit(ctx->platform_context);
+
+    // clear the env memory
+    *ctx = {0};
+    
     // delete this environment from the list of registered environments
     auto result = std::find(registeredEnvironments.begin(), 
         registeredEnvironments.end(), ctx );
