@@ -70,8 +70,8 @@ void copyResourceTable(void *shmem_addr)
      * removed in future release
      */
 
-    resources.user_vring0.da = (uint32_t)shmem_addr;
-    resources.user_vring1.da = ((uint32_t)shmem_addr + VRING_SIZE);
+    resources.user_vring0.da = (uintptr_t)shmem_addr;
+    resources.user_vring1.da = ((uintptr_t)shmem_addr + VRING_SIZE);
     memcpy(shmem_addr, &resources, sizeof(resources));
     memcpy( ((char*)shmem_addr + RESOURCE_TABLE_OFFSET) , &resources, sizeof(resources));
 }

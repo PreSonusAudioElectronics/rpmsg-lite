@@ -181,7 +181,7 @@ int32_t env_strncmp(char *dest, const char *src, uint32_t len);
  * @return  - physical address
  */
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-uint32_t env_map_vatopa(void *env, void *address);
+uintptr_t env_map_vatopa(void *env, void *address);
 #else
 uintptr_t env_map_vatopa(void *address);
 #endif
@@ -198,7 +198,7 @@ uintptr_t env_map_vatopa(void *address);
  *
  */
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-void *env_map_patova(void *env, uint32_t address);
+void *env_map_patova(void *env, uintptr_t address);
 #else
 void *env_map_patova(uintptr_t address);
 #endif
@@ -361,7 +361,7 @@ void env_yield(void);
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 void env_register_isr(void *env, uint32_t vector_id, void *data);
 #else
-void env_register_isr(uint32_t vector_id, void *data);
+void env_register_isr(uint16_t vector_id, void *data);
 #endif
 
 /*!
@@ -375,7 +375,7 @@ void env_register_isr(uint32_t vector_id, void *data);
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 void env_unregister_isr(void *env, uint32_t vector_id);
 #else
-void env_unregister_isr(uint32_t vector_id);
+void env_unregister_isr(uint16_t vector_id);
 #endif
 
 /*!

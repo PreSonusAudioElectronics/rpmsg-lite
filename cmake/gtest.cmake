@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.12)
 set(CMAKE_CXX_STANDARD 17)
 
 enable_testing()
@@ -23,6 +23,9 @@ set( RPMSG_TEST_SOURCES
 
 set( RPMSG_TEST_INCLUDES
 	${RPMSG_LIB_ROOT}/lib/include/platform/simulation
+	${RPMSG_LIB_ROOT}/lib/include/environment/linux_simulation
 )
 
 add_subdirectory( ${RPMSG_LIB_ROOT}/test )
+
+

@@ -9,6 +9,7 @@
         "iomanip": "cpp",
         "ostream": "cpp",
         "sstream": "cpp",
-        "streambuf": "cpp"
+        "streambuf": "cpp",
+        "rpmsg_env_qnx.h": "c"
     }
 }

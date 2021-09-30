@@ -8,6 +8,7 @@
  */
 
 #include "rpmsg_env.h"
+#include "rpmsg_env_linux.h"
 #include "rpmsg_platform.h"
 #include "virtqueue.h"
 #include "rpmsg_compiler.h"
@@ -21,9 +22,11 @@
 #include <chrono>
 #include <thread>
 #include <memory>
+#include <vector>
+#include <algorithm>
 
-#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
+#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT != 1)
+#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 1"
 #endif
 
 /* RL_ENV_MAX_MUTEX_COUNT is an arbitrary count greater than 'count'
@@ -44,11 +47,60 @@ static int32_t env_init_counter = 0;
 /*!
  * Structure to keep track of registered ISR's.
  */
+
 struct isr_info
 {
-	void *data;
+    virtqueue * vq;
+    bool registered = false;
 };
-static struct isr_info isr_table[ISR_COUNT];
+
+typedef struct env_context
+{
+    int addIsr(virtqueue *vq, unsigned vector_id)
+    {
+        if(vector_id >= ISR_COUNT )
+        {
+            return -1;
+        }
+
+        if ( isr_table[vector_id].registered )
+        {
+            return -1;
+        }
+
+        isr_table[vector_id].vq = vq;
+        isr_table[vector_id].registered = false;
+        if( highest_registered_vector_id < vector_id )
+        {
+            highest_registered_vector_id = vector_id;
+        }
+        return 0;
+    }
+
+    void *platform_context;
+    void *shared_mem_base;
+    isr_info isr_table[ISR_COUNT];
+    unsigned highest_registered_vector_id = 0;
+} env_context_t;
+
+static std::mutex envLock;
+static std::vector<env_context_t *> registeredEnvironments;
+
+/**
+ * Returns pointer to platform context.
+ *
+ * @param env_context Pointer to env. context
+ *
+ * @return Pointer to platform context
+ */
+void *env_get_platform_context(void *env_context)
+{
+    // env_context_t *env = static_cast<env_context_t *>(env_context);
+    // return env->platform_context;
+
+    // use the env context
+    return env_context;
+}
 
 /*!
  * env_in_isr
@@ -58,16 +110,8 @@ static struct isr_info isr_table[ISR_COUNT];
  */
 static int32_t env_in_isr(void)
 {
-	return platform_in_isr();
+    return platform_in_isr();
 }
-
-
-// ISR_DIRECT_DECLARE(zephMuHandler)
-// {
-//	 MU_IRQ_HANDLER();
-//	 ISR_DIRECT_PM();
-//	 return 1;
-// }
 
 /*!
  * env_init
@@ -75,52 +119,72 @@ static int32_t env_in_isr(void)
  * Initializes OS/BM environment.
  *
  */
-int32_t env_init(void *shmem_addr)
+int32_t env_init(void **env_context, void *env_init_data)
 {
-	int32_t retval;
-	std::mutex mutex;
-	mutex.lock(); /* stop scheduler */
-	/* verify 'env_init_counter' */
-	RL_ASSERT(env_init_counter >= 0);
-	if (env_init_counter < 0)
-	{
-		mutex.unlock(); /* re-enable scheduler */
-		return -1;
-	}
-	env_init_counter++;
-	/* multiple call of 'env_init' - return ok */
-	if (env_init_counter == 1)
-	{
-		/* first call */
-		// k_sem_init(&env_sema, 0, 1);
-		(void)memset(isr_table, 0, sizeof(isr_table));
-		mutex.unlock();
+    std::lock_guard<std::mutex> lk(envLock);
 
-		retval = platform_init(shmem_addr);
-		/* Here Zephyr overrides whatever platform_init() did with 
-		interrupt priorities, etc
-		*/
+    rpmsg_env_init_t *init = static_cast<rpmsg_env_init_t *>(env_init_data);
 
-		// Directly populate the M7 core vector table with the handler address, same as the freertos port
-		// IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
-		// irq_enable(MU_M7_IRQn);
+    RL_ASSERT(init != nullptr);
 
-		// k_sem_give(&env_sema);
+    env_context_t *ctx = static_cast<env_context_t *>(env_allocate_memory(sizeof(env_context_t)));
 
-		return retval;
-	}
-	else
-	{
-		mutex.unlock();
-		/* Get the semaphore and then return it,
-		 * this allows for platform_init() to block
-		 * if needed and other tasks to wait for the
-		 * blocking to be done.
-		 * This is in ENV layer as this is ENV specific.*/
-		// k_sem_take(&env_sema, K_FOREVER);
-		// k_sem_give(&env_sema);
-		return 0;
-	}
+    RL_ASSERT(ctx != nullptr);
+    RL_ASSERT(platform_init(init->shmemAddr) >= 0);
+
+    ctx->shared_mem_base = init->shmemAddr;
+
+    *env_context = ctx;
+    registeredEnvironments.push_back(ctx);
+
+    return 0;
+
+#if 0
+    int32_t retval;
+    std::mutex mutex;
+    mutex.lock(); /* stop scheduler */
+    /* verify 'env_init_counter' */
+    RL_ASSERT(env_init_counter >= 0);
+    if (env_init_counter < 0)
+    {
+        mutex.unlock(); /* re-enable scheduler */
+        return -1;
+    }
+    env_init_counter++;
+    /* multiple call of 'env_init' - return ok */
+    if (env_init_counter == 1)
+    {
+        /* first call */
+        // k_sem_init(&env_sema, 0, 1);
+        (void)memset(isr_table, 0, sizeof(isr_table));
+        mutex.unlock();
+
+        retval = platform_init(shmem_addr);
+        /* Here Zephyr overrides whatever platform_init() did with 
+        interrupt priorities, etc
+        */
+
+        // Directly populate the M7 core vector table with the handler address, same as the freertos port
+        // IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
+        // irq_enable(MU_M7_IRQn);
+
+        // k_sem_give(&env_sema);
+
+        return retval;
+    }
+    else
+    {
+        mutex.unlock();
+        /* Get the semaphore and then return it,
+         * this allows for platform_init() to block
+         * if needed and other tasks to wait for the
+         * blocking to be done.
+         * This is in ENV layer as this is ENV specific.*/
+        // k_sem_take(&env_sema, K_FOREVER);
+        // k_sem_give(&env_sema);
+        return 0;
+    }
+#endif
 }
 
 /*!
@@ -130,40 +194,21 @@ int32_t env_init(void *shmem_addr)
  *
  * @returns - execution status
  */
-int32_t env_deinit(void)
+int32_t env_deinit(void *env_context)
 {
-	int32_t retval;
-
-	std::mutex mutex;
-
-	mutex.lock(); /* stop scheduler */
-
-	/* verify 'env_init_counter' */
-	RL_ASSERT(env_init_counter > 0);
-	if (env_init_counter <= 0)
-	{
-		mutex.unlock(); /* re-enable scheduler */
-		return -1;
-	}
-
-	/* counter on zero - call platform deinit */
-	env_init_counter--;
-	/* multiple call of 'env_deinit' - return ok */
-	if (env_init_counter <= 0)
-	{
-		/* last call */
-		(void)memset(isr_table, 0, sizeof(isr_table));
-		retval = platform_deinit();
-		// k_sem_reset(&env_sema);
-		mutex.unlock();
-
-		return retval;
-	}
-	else
-	{
-		mutex.unlock();
-		return 0;
-	}
+    env_context_t *ctx = static_cast<env_context_t *>(env_context);
+    RL_ASSERT( env_context != nullptr );
+    platform_deinit(ctx->platform_context);
+    // delete this environment from the list of registered environments
+    auto result = std::find(registeredEnvironments.begin(), 
+        registeredEnvironments.end(), ctx );
+    if( result != registeredEnvironments.end() )
+    {
+        auto idx = std::distance(registeredEnvironments.begin(), result );
+        registeredEnvironments.erase(registeredEnvironments.begin() + idx);
+    }
+    env_free_memory(ctx);
+    return 0;
 }
 
 /*!
@@ -173,7 +218,7 @@ int32_t env_deinit(void)
  */
 void *env_allocate_memory(uint32_t size)
 {
-	return (malloc(size));
+    return (malloc(size));
 }
 
 /*!
@@ -183,10 +228,10 @@ void *env_allocate_memory(uint32_t size)
  */
 void env_free_memory(void *ptr)
 {
-	if (ptr != ((void *)0))
-	{
-		free(ptr);
-	}
+    if (ptr != ((void *)0))
+    {
+        free(ptr);
+    }
 }
 
 /*!
@@ -199,7 +244,7 @@ void env_free_memory(void *ptr)
  */
 void env_memset(void *ptr, int32_t value, uint32_t size)
 {
-	(void)memset(ptr, value, size);
+    (void)memset(ptr, value, size);
 }
 
 /*!
@@ -212,7 +257,7 @@ void env_memset(void *ptr, int32_t value, uint32_t size)
  */
 void env_memcpy(void *dst, void const *src, uint32_t len)
 {
-	(void)memcpy(dst, src, len);
+    (void)memcpy(dst, src, len);
 }
 
 /*!
@@ -225,7 +270,7 @@ void env_memcpy(void *dst, void const *src, uint32_t len)
 
 int32_t env_strcmp(const char *dst, const char *src)
 {
-	return (strcmp(dst, src));
+    return (strcmp(dst, src));
 }
 
 /*!
@@ -238,7 +283,7 @@ int32_t env_strcmp(const char *dst, const char *src)
  */
 void env_strncpy(char *dst, const char *src, uint32_t len)
 {
-	(void)strncpy(dst, src, len);
+    (void)strncpy(dst, src, len);
 }
 
 /*!
@@ -251,7 +296,7 @@ void env_strncpy(char *dst, const char *src, uint32_t len)
  */
 int32_t env_strncmp(char *dst, const char *src, uint32_t len)
 {
-	return (strncmp(dst, src, len));
+    return (strncmp(dst, src, len));
 }
 
 /*!
@@ -261,7 +306,7 @@ int32_t env_strncmp(char *dst, const char *src, uint32_t len)
  */
 void env_mb(void)
 {
-	MEM_BARRIER();
+    MEM_BARRIER();
 }
 
 /*!
@@ -269,7 +314,7 @@ void env_mb(void)
  */
 void env_rmb(void)
 {
-	MEM_BARRIER();
+    MEM_BARRIER();
 }
 
 /*!
@@ -277,7 +322,7 @@ void env_rmb(void)
  */
 void env_wmb(void)
 {
-	MEM_BARRIER();
+    MEM_BARRIER();
 }
 
 /*!
@@ -285,9 +330,22 @@ void env_wmb(void)
  *
  * @param address
  */
-uintptr_t env_map_vatopa(void *address)
+uintptr_t env_map_vatopa(void *env, void *address)
 {
-	return platform_vatopa(address);
+    return reinterpret_cast<uintptr_t>(address);
+
+#if 0
+#if IMX_MMAP_VA_ON_PA
+    return ((uint32_t)address);
+#else
+    /* This is faster then mem_offset64() */
+    env_context_t *ctx = env;
+    uint64_t va        = (uint64_t)address;
+    uint64_t va_start  = (uint64_t)ctx->va;
+    uint64_t pa        = ctx->pa + (va - va_start);
+    return pa;
+#endif
+#endif
 }
 
 /*!
@@ -295,9 +353,9 @@ uintptr_t env_map_vatopa(void *address)
  *
  * @param address
  */
-void *env_map_patova(uintptr_t address)
+void *env_map_patova(void *env, uintptr_t address)
 {
-	return platform_patova(address);
+    return platform_patova(address);
 }
 
 /*!
@@ -308,15 +366,15 @@ void *env_map_patova(uintptr_t address)
  */
 int32_t env_create_mutex(void **lock, int32_t count)
 {
-	std::mutex * mutex = new std::mutex;
+    std::mutex *mutex = new std::mutex;
 
-	if (count > RL_ENV_MAX_MUTEX_COUNT)
-	{
-		return -1;
-	}
+    if (count > RL_ENV_MAX_MUTEX_COUNT)
+    {
+        return -1;
+    }
 
-	*lock = (void *)mutex;
-	return 0;
+    *lock = (void *)mutex;
+    return 0;
 }
 
 /*!
@@ -327,11 +385,11 @@ int32_t env_create_mutex(void **lock, int32_t count)
  */
 void env_delete_mutex(void *lock)
 {
-	if(lock)
-	{
-		std::mutex *mutex = static_cast<std::mutex*>( lock );
-		delete mutex;
-	}
+    if (lock)
+    {
+        std::mutex *mutex = static_cast<std::mutex *>(lock);
+        delete mutex;
+    }
 }
 
 /*!
@@ -342,14 +400,14 @@ void env_delete_mutex(void *lock)
  */
 void env_lock_mutex(void *lock)
 {
-	if (env_in_isr() == 0)
-	{
-		if(lock)
-		{
-			std::mutex *mutex = static_cast<std::mutex*>( lock );
-			mutex->lock();
-		}
-	}
+    if (env_in_isr() == 0)
+    {
+        if (lock)
+        {
+            std::mutex *mutex = static_cast<std::mutex *>(lock);
+            mutex->lock();
+        }
+    }
 }
 
 /*!
@@ -359,11 +417,11 @@ void env_lock_mutex(void *lock)
  */
 void env_unlock_mutex(void *lock)
 {
-	if (env_in_isr() == 0)
-	{
-		std::mutex *mutex = static_cast<std::mutex*>( lock );
-		mutex->unlock();
-	}
+    if (env_in_isr() == 0)
+    {
+        std::mutex *mutex = static_cast<std::mutex *>(lock);
+        mutex->unlock();
+    }
 }
 
 /*!
@@ -375,7 +433,7 @@ void env_unlock_mutex(void *lock)
  */
 int32_t env_create_sync_lock(void **lock, int32_t state)
 {
-	return env_create_mutex(lock, state); /* state=1 .. initially free */
+    return env_create_mutex(lock, state); /* state=1 .. initially free */
 }
 
 /*!
@@ -386,10 +444,10 @@ int32_t env_create_sync_lock(void **lock, int32_t state)
  */
 void env_delete_sync_lock(void *lock)
 {
-	if (lock != ((void *)0))
-	{
-		env_delete_mutex(lock);
-	}
+    if (lock != ((void *)0))
+    {
+        env_delete_mutex(lock);
+    }
 }
 
 /*!
@@ -400,10 +458,10 @@ void env_delete_sync_lock(void *lock)
  */
 void env_acquire_sync_lock(void *lock)
 {
-	if (lock != ((void *)0))
-	{
-		env_lock_mutex(lock);
-	}
+    if (lock != ((void *)0))
+    {
+        env_lock_mutex(lock);
+    }
 }
 
 /*!
@@ -413,10 +471,10 @@ void env_acquire_sync_lock(void *lock)
  */
 void env_release_sync_lock(void *lock)
 {
-	if (lock != ((void *)0))
-	{
-		env_unlock_mutex(lock);
-	}
+    if (lock != ((void *)0))
+    {
+        env_unlock_mutex(lock);
+    }
 }
 
 /*!
@@ -426,12 +484,12 @@ void env_release_sync_lock(void *lock)
  */
 void env_sleep_msec(uint32_t num_msec)
 {
-	std::this_thread::sleep_for(std::chrono::milliseconds(num_msec));
+    std::this_thread::sleep_for(std::chrono::milliseconds(num_msec));
 }
 
 void env_yield(void)
 {
-	std::this_thread::yield();
+    std::this_thread::yield();
 }
 
 /*!
@@ -439,16 +497,24 @@ void env_yield(void)
  *
  * Registers interrupt handler data for the given interrupt vector.
  *
+ * @param env - environment context
  * @param vector_id - virtual interrupt vector number
  * @param data	  - interrupt handler data (virtqueue)
  */
-void env_register_isr(uint32_t vector_id, void *data)
+void env_register_isr(void *env, uint32_t vector_id, void *data)
 {
-	RL_ASSERT(vector_id < ISR_COUNT);
-	if (vector_id < ISR_COUNT)
-	{
-		isr_table[vector_id].data = data;
-	}
+    RL_ASSERT(vector_id < ISR_COUNT);
+    RL_ASSERT(env != nullptr);
+
+    virtqueue *vq = static_cast<virtqueue*>( data );
+
+    RL_ASSERT( vq != nullptr );
+
+    env_context_t *thisEnv = static_cast<env_context_t *>(env);
+
+    int status = thisEnv->addIsr(vq, vector_id);
+
+    RL_ASSERT( status >= 0 );
 }
 
 /*!
@@ -458,13 +524,11 @@ void env_register_isr(uint32_t vector_id, void *data)
  *
  * @param vector_id - virtual interrupt vector number
  */
-void env_unregister_isr(uint32_t vector_id)
+void env_unregister_isr(void *env, uint32_t vector_id)
 {
-	RL_ASSERT(vector_id < ISR_COUNT);
-	if (vector_id < ISR_COUNT)
-	{
-		isr_table[vector_id].data = ((void *)0);
-	}
+    RL_ASSERT(vector_id < ISR_COUNT);
+    RL_ASSERT(env != nullptr);
+    // TODO: provide unregister
 }
 
 /*!
@@ -472,12 +536,18 @@ void env_unregister_isr(uint32_t vector_id)
  *
  * Enables the given interrupt
  *
- * @param vector_id   - interrupt vector number
+ * @param vector_id   - virtual interrupt vector number
  */
-
-void env_enable_interrupt(uint32_t vector_id)
+void env_enable_interrupt(void *env, uint32_t vector_id)
 {
-	(void)platform_interrupt_enable(vector_id);
+    env_context_t *ctx = static_cast<env_context_t *>(env);
+
+    RL_ASSERT(vector_id < ISR_COUNT);
+    if (vector_id < ISR_COUNT)
+    {
+        // TODO: do we need to enable/disable interrupts in simulation?
+        // ctx->isr_table[vector_id].enabled = 1;
+    }
 }
 
 /*!
@@ -485,12 +555,18 @@ void env_enable_interrupt(uint32_t vector_id)
  *
  * Disables the given interrupt
  *
- * @param vector_id   - interrupt vector number
+ * @param vector_id   - virtual interrupt vector number
  */
-
-void env_disable_interrupt(uint32_t vector_id)
+void env_disable_interrupt(void *env, uint32_t vector_id)
 {
-	(void)platform_interrupt_disable(vector_id);
+    env_context_t *ctx = static_cast<env_context_t *>(env);
+
+    RL_ASSERT(vector_id < ISR_COUNT);
+    if (vector_id < ISR_COUNT)
+    {
+        // TODO: do we need to disable/enable interrupts in simulation?
+        // ctx->isr_table[vector_id].enabled = 0;
+    }
 }
 
 /*!
@@ -506,7 +582,7 @@ void env_disable_interrupt(uint32_t vector_id)
 
 void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 {
-	platform_map_mem_region(va, pa, size, flags);
+    platform_map_mem_region(va, pa, size, flags);
 }
 
 /*!
@@ -518,22 +594,68 @@ void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 
 void env_disable_cache(void)
 {
-	platform_cache_all_flush_invalidate();
-	platform_cache_disable();
+    platform_cache_all_flush_invalidate();
+    platform_cache_disable();
 }
 
 /*========================================================= */
 /* Util data / functions  */
 
-void env_isr(uint32_t vector)
+void env_isr(void *env, uint32_t vector)
 {
-	struct isr_info *info;
-	RL_ASSERT(vector < ISR_COUNT);
-	if (vector < ISR_COUNT)
-	{
-		info = &isr_table[vector];
-		virtqueue_notification((struct virtqueue *)info->data);
-	}
+    RL_ASSERT(env != nullptr);
+
+    env_context_t * pEnv = static_cast<env_context_t*>( env );
+
+    /*
+        On a real SoC, this is where we would kick the other
+        processor core through the Messaging Unit
+
+        We simulate that here by notifying all virtqueues
+        (from all registered environments) except this one,
+        which have registered an isr for this vector
+    */
+
+    for ( auto it:registeredEnvironments )
+    {
+        if( it != pEnv )
+        {
+            // notify this virtqueue
+            if( it->isr_table[vector].registered )
+            {
+                virtqueue_notification( it->isr_table[vector].vq );
+            }
+        }
+    }
+}
+
+/**
+ * Called by rpmsg to init an interrupt
+ *
+ * @param env      Pointer to env context.
+ * @param vq_id    Virt. queue ID.
+ * @param isr_data Pointer to interrupt data.
+ *
+ * @return         Execution status.
+ */
+int32_t env_init_interrupt(void *env, int32_t vq_id, void *isr_data)
+{
+    env_register_isr(env, vq_id, isr_data);
+    return 0;
+}
+
+/**
+ * Called by rpmsg to deinit an interrupt.
+ *
+ * @param env   Pointer to env context.
+ * @param vq_id Virt. queue ID.
+ *
+ * @return      Execution status.
+ */
+int32_t env_deinit_interrupt(void *env, int32_t vq_id)
+{
+    env_unregister_isr(env, vq_id);
+    return 0;
 }
 
 /*
@@ -549,9 +671,9 @@ void env_isr(uint32_t vector)
  */
 int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
 {
-	auto p1 = new ThreadsafeQueue(length, element_size);
-	*queue = p1;
-	return 0;
+    auto p1 = new ThreadsafeQueue(length, element_size);
+    *queue = p1;
+    return 0;
 }
 
 /*!
@@ -564,10 +686,10 @@ int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
 
 void env_delete_queue(void *queue)
 {
-	if(queue)
-	{
-		delete( (ThreadsafeQueue*)queue );
-	}
+    if (queue)
+    {
+        delete ((ThreadsafeQueue *)queue);
+    }
 }
 
 /*!
@@ -584,17 +706,17 @@ void env_delete_queue(void *queue)
 
 int32_t env_put_queue(void *queue, void *msg, uint32_t timeout_ms)
 {
-	if (env_in_isr() != 0)
-	{
-		timeout_ms = 0; /* force timeout == 0 when in ISR */
-	}
+    if (env_in_isr() != 0)
+    {
+        timeout_ms = 0; /* force timeout == 0 when in ISR */
+    }
 
-	// ignore timeout
-	if (0 == ((ThreadsafeQueue*)queue)->put(msg) )
-	{
-		return 1;
-	}
-	return 0;
+    // ignore timeout
+    if (0 == ((ThreadsafeQueue *)queue)->put(msg))
+    {
+        return 1;
+    }
+    return 0;
 }
 
 /*!
@@ -611,18 +733,18 @@ int32_t env_put_queue(void *queue, void *msg, uint32_t timeout_ms)
 
 int32_t env_get_queue(void *queue, void *msg, uint32_t timeout_ms)
 {
-	if (env_in_isr() != 0)
-	{
-		timeout_ms = 0; /* force timeout == 0 when in ISR */
-	}
+    if (env_in_isr() != 0)
+    {
+        timeout_ms = 0; /* force timeout == 0 when in ISR */
+    }
 
-	// ignore timeout
-	if ( 0 == ((ThreadsafeQueue*)queue)->get(msg) )
-	{
-		return 1;
-	}
+    // ignore timeout
+    if (0 == ((ThreadsafeQueue *)queue)->get(msg))
+    {
+        return 1;
+    }
 
-	return 0;
+    return 0;
 }
 
 /*!
@@ -637,5 +759,5 @@ int32_t env_get_queue(void *queue, void *msg, uint32_t timeout_ms)
 
 int32_t env_get_current_queue_size(void *queue)
 {
-	return ((ThreadsafeQueue *)queue)->getSize();
+    return ((ThreadsafeQueue *)queue)->getSize();
 }

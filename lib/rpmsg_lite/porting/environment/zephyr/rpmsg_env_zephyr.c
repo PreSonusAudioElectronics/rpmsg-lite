@@ -469,7 +469,7 @@ void env_yield(void)
  * @param vector_id - virtual interrupt vector number
  * @param data      - interrupt handler data (virtqueue)
  */
-void env_register_isr(uint32_t vector_id, void *data)
+void env_register_isr(uint16_t vector_id, void *data)
 {
     RL_ASSERT(vector_id < ISR_COUNT);
     if (vector_id < ISR_COUNT)
@@ -485,7 +485,7 @@ void env_register_isr(uint32_t vector_id, void *data)
  *
  * @param vector_id - virtual interrupt vector number
  */
-void env_unregister_isr(uint32_t vector_id)
+void env_unregister_isr(uint16_t vector_id)
 {
     RL_ASSERT(vector_id < ISR_COUNT);
     if (vector_id < ISR_COUNT)

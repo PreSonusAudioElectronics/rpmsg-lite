@@ -33,11 +33,7 @@
 #ifndef _rpmsg_config_h
 #define _rpmsg_config_h
 
-#define RL_USE_CUSTOM_CONFIG (1)
-
-#if RL_USE_CUSTOM_CONFIG
-#include "rpmsg_config.h"
-#endif
+#include <stdio.h>
 
 /*!
  * @addtogroup config
@@ -145,6 +141,7 @@
     {                     \
         if (!(b))         \
         {                 \
+            printf("\nRL_ASSERT FAILURE at: \n  %s, line %d\n", __FILE__, __LINE__); \
             RL_HANG();    \
         }                 \
     } while (0 == 1);

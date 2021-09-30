@@ -11,11 +11,8 @@
 #include "rpmsg_env.h"
 #include "rsc_table.h"
 
-// #include "fsl_device_registers.h"
-// #include "fsl_mu.h"
-
-#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
+#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT != 1)
+#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 1"
 #endif
 
 #define APP_MU_IRQ_PRIORITY (3U)
@@ -34,10 +31,10 @@ static void platform_global_isr_enable(void)
     // __asm volatile("cpsie i");
 }
 
-int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
+int32_t platform_init_interrupt(void* env, uint32_t vector_id, void *isr_data)
 {
     /* Register ISR to environment layer */
-    env_register_isr(vector_id, isr_data);
+    env_register_isr(env, vector_id, isr_data);
 
     /* Prepare the MU Hardware, enable channel 1 interrupt */
     env_lock_mutex(platform_lock);
@@ -54,7 +51,7 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
     return 0;
 }
 
-int32_t platform_deinit_interrupt(uint32_t vector_id)
+int32_t platform_deinit_interrupt(void *env, uint16_t vector_id)
 {
     /* Prepare the MU Hardware */
     env_lock_mutex(platform_lock);
@@ -67,46 +64,23 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
     }
 
     /* Unregister ISR from environment layer */
-    env_unregister_isr(vector_id);
+    env_unregister_isr(env, vector_id);
 
     env_unlock_mutex(platform_lock);
 
     return 0;
 }
 
-void platform_notify(uint32_t vector_id)
+void platform_notify(void *env_context, uint32_t vector_id)
 {
-    /* As Linux suggests, use MU->Data Channel 1 as communication channel */
-    uint32_t msg = (uint32_t)(vector_id << 16);
-
     env_lock_mutex(platform_lock);
-    // MU_SendMsg(MUB, RPMSG_MU_CHANNEL, msg);
+
+    // Simulat the MU kick and vector to remote isr by calling the isr directly
+    env_isr(env_context, vector_id);
     env_unlock_mutex(platform_lock);
 }
 
-/*
- * MU Interrrupt RPMsg handler
- */
-int32_t MU_M7_IRQHandler(void)
-{
-    uint32_t channel;
 
-    // if ((((1UL << 27U) >> RPMSG_MU_CHANNEL) & MU_GetStatusFlags(MUB)) != 0UL)
-    // {
-    //     channel = MU_ReceiveMsgNonBlocking(MUB, RPMSG_MU_CHANNEL); // Read message from RX register.
-    //     env_isr(channel >> 16);
-    // }
-    /* ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
-     * exception return operation might vector to incorrect interrupt.
-     * For Cortex-M7, if core speed much faster than peripheral register write speed,
-     * the peripheral interrupt flags may be still set after exiting ISR, this results to
-     * the same error similar with errata 83869 */
-#if (defined __CORTEX_M) && ((__CORTEX_M == 4U) || (__CORTEX_M == 7U))
-    __DSB();
-#endif
-
-    return 0;
-}
 
 /**
  * platform_time_delay
@@ -258,14 +232,6 @@ int32_t platform_init(void *shmem_addr)
 {
     copyResourceTable(shmem_addr);
 
-    /*
-     * Prepare for the MU Interrupt
-     *  MU must be initialized before rpmsg init is called
-     */
-    // MU_Init(MUB);
-    // NVIC_SetPriority(MU_M7_IRQn, APP_MU_IRQ_PRIORITY);
-    // NVIC_EnableIRQ(MU_M7_IRQn);
-
     /* Create lock used in multi-instanced RPMsg */
     if (0 != env_create_mutex(&platform_lock, 1))
     {
@@ -280,7 +246,7 @@ int32_t platform_init(void *shmem_addr)
  *
  * platform/environment deinit process
  */
-int32_t platform_deinit(void)
+int32_t platform_deinit(void *env)
 {
     /* Delete lock used in multi-instanced RPMsg */
     env_delete_mutex(platform_lock);

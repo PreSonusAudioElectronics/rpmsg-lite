@@ -3,6 +3,7 @@
 #include "rpmsg_queue.h"
 #include "rpmsg_ns.h"
 #include "rsc_table.h"
+#include "rpmsg_env_linux.h"
 #include "threadsafequeue.h"
 
 #include <gtest/gtest.h>
@@ -47,9 +48,13 @@ TEST(TestRpmsgLite, CanInstantiateRemote)
 	static const uint32_t kMemToAllocate = ( RESOURCE_TABLE_OFFSET + sizeof(remote_resource_table) + 16);
 	auto vringMem = new char[kMemToAllocate];
 
-	rpmsg_lite_instance * inst = rpmsg_lite_remote_init( vringMem, 0, 0);
+	rpmsg_env_init_t remoteEnv = { vringMem, nullptr };
+	rpmsg_lite_instance * inst = rpmsg_lite_remote_init( vringMem, 0, 0, &remoteEnv);
 
 	ASSERT_NE(inst, nullptr);
+	
+	auto status = rpmsg_lite_deinit(inst);
+	ASSERT_GE( status, 0);
 
 	delete(vringMem);
 }
@@ -61,9 +66,13 @@ TEST(TestRpmsgLite, CanInstantiateMaster)
 
 	memBase = (void*)vringMem;
 
-	rpmsg_lite_instance *inst = rpmsg_lite_master_init(vringMem, kMemToAllocate, 0, 0);
+	rpmsg_env_init_t masterEnv = { vringMem, nullptr };
+	rpmsg_lite_instance *inst = rpmsg_lite_master_init(vringMem, kMemToAllocate, 0, 0, &masterEnv );
 
 	ASSERT_NE( inst, nullptr );
+
+	auto status = rpmsg_lite_deinit(inst);
+	ASSERT_GE( status, 0);
 
 	delete(vringMem);
 }
@@ -118,7 +127,8 @@ void remoteThreadFunc(void *sharedMemBase)
 {
 	std::unique_lock<std::mutex> lk(remoteReadyMutex);
 
-	static rpmsg_lite_instance * remoteInstance = rpmsg_lite_remote_init( sharedMemBase, 0, 0);
+	rpmsg_env_init_t remoteEnv = { sharedMemBase, nullptr };
+	static auto remoteInstance = rpmsg_lite_remote_init( sharedMemBase, 0, 0, &remoteEnv);
 
 	ASSERT_NE( remoteInstance, nullptr );
 
@@ -147,7 +157,10 @@ void remoteThreadFunc(void *sharedMemBase)
 void masterThreadFunc(void *sharedMemBase, uint32_t shMemSize)
 {
 	printf("Starting master thread...\n");
-	static auto masterInstance = rpmsg_lite_master_init( sharedMemBase, shMemSize, 0, RL_NO_FLAGS );
+
+	rpmsg_env_init_t masterEnv = { sharedMemBase, nullptr };
+	static auto masterInstance = rpmsg_lite_master_init( sharedMemBase, shMemSize, 0, 
+		RL_NO_FLAGS, &masterEnv );
 
 	ASSERT_NE( masterInstance, nullptr );
 
