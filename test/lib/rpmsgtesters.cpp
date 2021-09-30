@@ -35,7 +35,6 @@ RpmsgRemoteTester::~RpmsgRemoteTester()
     EXPECT_EQ( rpmsg_queue_destroy(this->instance, this->rpQueue), RL_SUCCESS );
     EXPECT_EQ( rpmsg_lite_deinit(this->instance), RL_SUCCESS );
     rpmsgMutex.unlock();
-
 }
 
 int RpmsgRemoteTester::start()
