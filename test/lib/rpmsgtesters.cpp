@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "rpmsgtesters.h"
+#include "rpmsgtestdispatchers.h"
 
 RpmsgRemoteTester::RpmsgRemoteTester(void* shmemAddr, uint32_t linkId, 
     uint32_t endpointAddress, const char *eptAnnounceString, const char *expectedHelloString, 

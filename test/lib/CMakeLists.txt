@@ -4,7 +4,7 @@ set( TARGET_NAME test_rpmsg_lite )
 add_executable(
 	${TARGET_NAME}
 	test_rpmsg_lite.cpp
-	rpmsgtesters.cpp
+	rpmsgtestdispatchers.cpp
 	${RPMSG_COMMON_SRCS}
 	${RPMSG_TEST_SOURCES}
 )

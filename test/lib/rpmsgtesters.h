@@ -1,6 +1,6 @@
 
-#ifndef _rpmsgtesters_h
-#define _rpmsgtesters_h
+#ifndef _rpmsgtestdispatchers_h
+#define _rpmsgtestdispatchers_h
 
 #include <mutex>
 #include <thread>
@@ -54,4 +54,4 @@ private:
 
 };
 
-#endif // _rpmsgtesters_h
+#endif // _rpmsgtestdispatchers_h
