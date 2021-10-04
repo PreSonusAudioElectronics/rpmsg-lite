@@ -128,7 +128,7 @@ int32_t rp_platform_in_isr(void)
 {
     // return (((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0UL) ? 1 : 0);
     // TODO: fixme
-    return (int32_t)arch_in_int_handler();
+    return 0;
 }
 
 /**
@@ -212,7 +212,7 @@ void rp_platform_cache_all_flush_invalidate(void)
  */
 void rp_platform_cache_disable(void)
 {
-    arch_disable_cache(0);
+    // dummy stub
 }
 
 /**
