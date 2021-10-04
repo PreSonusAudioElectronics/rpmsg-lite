@@ -77,7 +77,7 @@ typedef struct env_context
         return 0;
     }
 
-    void *platform_context;
+    void *rp_platform_context;
     void *shared_mem_base;
     isr_info isr_table[ISR_COUNT];
     unsigned highest_registered_vector_id = 0;
@@ -93,10 +93,10 @@ static std::vector<env_context_t *> registeredEnvironments;
  *
  * @return Pointer to platform context
  */
-void *env_get_platform_context(void *env_context)
+void *env_get_rp_platform_context(void *env_context)
 {
     // env_context_t *env = static_cast<env_context_t *>(env_context);
-    // return env->platform_context;
+    // return env->rp_platform_context;
 
     // use the env context
     return env_context;
@@ -110,7 +110,7 @@ void *env_get_platform_context(void *env_context)
  */
 static int32_t env_in_isr(void)
 {
-    return platform_in_isr();
+    return rp_platform_in_isr();
 }
 
 /*!
@@ -130,7 +130,7 @@ int32_t env_init(void **env_context, void *env_init_data)
     env_context_t *ctx = static_cast<env_context_t *>(env_allocate_memory(sizeof(env_context_t)));
 
     RL_ASSERT(ctx != nullptr);
-    RL_ASSERT(platform_init(init->shmemAddr) >= 0);
+    RL_ASSERT(rp_platform_init(init->shmemAddr) >= 0);
 
     ctx->shared_mem_base = init->shmemAddr;
 
@@ -159,8 +159,8 @@ int32_t env_init(void **env_context, void *env_init_data)
         (void)memset(isr_table, 0, sizeof(isr_table));
         mutex.unlock();
 
-        retval = platform_init(shmem_addr);
-        /* Here Zephyr overrides whatever platform_init() did with 
+        retval = rp_platform_init(shmem_addr);
+        /* Here Zephyr overrides whatever rp_platform_init() did with 
         interrupt priorities, etc
         */
 
@@ -176,7 +176,7 @@ int32_t env_init(void **env_context, void *env_init_data)
     {
         mutex.unlock();
         /* Get the semaphore and then return it,
-         * this allows for platform_init() to block
+         * this allows for rp_platform_init() to block
          * if needed and other tasks to wait for the
          * blocking to be done.
          * This is in ENV layer as this is ENV specific.*/
@@ -198,7 +198,7 @@ int32_t env_deinit(void *env_context)
 {
     env_context_t *ctx = static_cast<env_context_t *>(env_context);
     RL_ASSERT( env_context != nullptr );
-    platform_deinit(ctx->platform_context);
+    rp_platform_deinit(ctx->rp_platform_context);
 
     // clear the env memory
     *ctx = {0};
@@ -359,7 +359,7 @@ uintptr_t env_map_vatopa(void *env, void *address)
  */
 void *env_map_patova(void *env, uintptr_t address)
 {
-    return platform_patova(address);
+    return rp_platform_patova(address);
 }
 
 /*!
@@ -586,7 +586,7 @@ void env_disable_interrupt(void *env, uint32_t vector_id)
 
 void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 {
-    platform_map_mem_region(va, pa, size, flags);
+    rp_platform_map_mem_region(va, pa, size, flags);
 }
 
 /*!
@@ -598,8 +598,8 @@ void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 
 void env_disable_cache(void)
 {
-    platform_cache_all_flush_invalidate();
-    platform_cache_disable();
+    rp_platform_cache_all_flush_invalidate();
+    rp_platform_cache_disable();
 }
 
 /*========================================================= */

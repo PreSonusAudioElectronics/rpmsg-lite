@@ -90,7 +90,7 @@ int32_t env_init(void)
     }
     // first call
     (void)memset(isr_table, 0, sizeof(isr_table));
-    return platform_init();
+    return rp_platform_init();
 }
 
 /*!
@@ -116,7 +116,7 @@ int32_t env_deinit(void)
         return 0;
     }
     // last call
-    return platform_deinit();
+    return rp_platform_deinit();
 }
 
 /*!
@@ -240,7 +240,7 @@ void env_wmb(void)
  */
 uint32_t env_map_vatopa(void *address)
 {
-    return platform_vatopa(address);
+    return rp_platform_vatopa(address);
 }
 
 /*!
@@ -250,7 +250,7 @@ uint32_t env_map_vatopa(void *address)
  */
 void *env_map_patova(uint32_t address)
 {
-    return platform_patova(address);
+    return rp_platform_patova(address);
 }
 
 /*!
@@ -308,7 +308,7 @@ void env_unlock_mutex(void *lock)
  */
 void env_sleep_msec(uint32_t num_msec)
 {
-    platform_time_delay(num_msec);
+    rp_platform_time_delay(num_msec);
 }
 
 /*!
@@ -354,7 +354,7 @@ void env_unregister_isr(uint32_t vector_id)
 
 void env_enable_interrupt(uint32_t vector_id)
 {
-    (void)platform_interrupt_enable(vector_id);
+    (void)rp_platform_interrupt_enable(vector_id);
 }
 
 /*!
@@ -367,7 +367,7 @@ void env_enable_interrupt(uint32_t vector_id)
 
 void env_disable_interrupt(uint32_t vector_id)
 {
-    (void)platform_interrupt_disable(vector_id);
+    (void)rp_platform_interrupt_disable(vector_id);
 }
 
 /*!
@@ -383,7 +383,7 @@ void env_disable_interrupt(uint32_t vector_id)
 
 void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 {
-    platform_map_mem_region(va, pa, size, flags);
+    rp_platform_map_mem_region(va, pa, size, flags);
 }
 
 /*!
@@ -395,8 +395,8 @@ void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 
 void env_disable_cache(void)
 {
-    platform_cache_all_flush_invalidate();
-    platform_cache_disable();
+    rp_platform_cache_all_flush_invalidate();
+    rp_platform_cache_disable();
 }
 
 /*========================================================= */

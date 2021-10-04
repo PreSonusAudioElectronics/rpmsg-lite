@@ -415,9 +415,9 @@ static void virtqueue_notify(struct virtqueue *vq)
 {
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
     struct rpmsg_lite_instance *inst = vq->priv;
-    platform_notify(inst->env ? env_get_platform_context(inst->env) : RL_NULL, vq->vq_queue_index);
+    rp_platform_notify(inst->env ? env_get_rp_platform_context(inst->env) : RL_NULL, vq->vq_queue_index);
 #else
-    platform_notify(vq->vq_queue_index);
+    rp_platform_notify(vq->vq_queue_index);
 #endif
 }
 
@@ -908,7 +908,7 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
         return RL_NULL;
     }
 
-    if (link_id > RL_PLATFORM_HIGHEST_LINK_ID)
+    if (link_id > RL_rp_platform_HIGHEST_LINK_ID)
     {
         return RL_NULL;
     }
@@ -1068,8 +1068,8 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
     env_enable_interrupt(rpmsg_lite_dev->env, rpmsg_lite_dev->rvq->vq_queue_index);
     env_enable_interrupt(rpmsg_lite_dev->env, rpmsg_lite_dev->tvq->vq_queue_index);
 #else
-    (void)platform_init_interrupt(rpmsg_lite_dev->rvq->vq_queue_index, rpmsg_lite_dev->rvq);
-    (void)platform_init_interrupt(rpmsg_lite_dev->tvq->vq_queue_index, rpmsg_lite_dev->tvq);
+    (void)rp_platform_init_interrupt(rpmsg_lite_dev->rvq->vq_queue_index, rpmsg_lite_dev->rvq);
+    (void)rp_platform_init_interrupt(rpmsg_lite_dev->tvq->vq_queue_index, rpmsg_lite_dev->tvq);
     env_disable_interrupt(rpmsg_lite_dev->rvq->vq_queue_index);
     env_disable_interrupt(rpmsg_lite_dev->tvq->vq_queue_index);
     rpmsg_lite_dev->link_state = 1U;
@@ -1108,7 +1108,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     uint32_t idx;
     struct rpmsg_lite_instance *rpmsg_lite_dev = RL_NULL;
 
-    if (link_id > RL_PLATFORM_HIGHEST_LINK_ID)
+    if (link_id > RL_rp_platform_HIGHEST_LINK_ID)
     {
         return RL_NULL;
     }
@@ -1209,8 +1209,8 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     env_enable_interrupt(rpmsg_lite_dev->env, rpmsg_lite_dev->rvq->vq_queue_index);
     env_enable_interrupt(rpmsg_lite_dev->env, rpmsg_lite_dev->tvq->vq_queue_index);
 #else
-    (void)platform_init_interrupt(rpmsg_lite_dev->rvq->vq_queue_index, rpmsg_lite_dev->rvq);
-    (void)platform_init_interrupt(rpmsg_lite_dev->tvq->vq_queue_index, rpmsg_lite_dev->tvq);
+    (void)rp_platform_init_interrupt(rpmsg_lite_dev->rvq->vq_queue_index, rpmsg_lite_dev->rvq);
+    (void)rp_platform_init_interrupt(rpmsg_lite_dev->tvq->vq_queue_index, rpmsg_lite_dev->tvq);
     env_disable_interrupt(rpmsg_lite_dev->rvq->vq_queue_index);
     env_disable_interrupt(rpmsg_lite_dev->tvq->vq_queue_index);
     rpmsg_lite_dev->link_state = 0;
@@ -1261,8 +1261,8 @@ int32_t rpmsg_lite_deinit(struct rpmsg_lite_instance *rpmsg_lite_dev)
     env_enable_interrupt(rpmsg_lite_dev->rvq->vq_queue_index);
     env_enable_interrupt(rpmsg_lite_dev->tvq->vq_queue_index);
 
-    (void)platform_deinit_interrupt(rpmsg_lite_dev->rvq->vq_queue_index);
-    (void)platform_deinit_interrupt(rpmsg_lite_dev->tvq->vq_queue_index);
+    (void)rp_platform_deinit_interrupt(rpmsg_lite_dev->rvq->vq_queue_index);
+    (void)rp_platform_deinit_interrupt(rpmsg_lite_dev->tvq->vq_queue_index);
 #endif
 
 #if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)

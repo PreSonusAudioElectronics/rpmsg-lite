@@ -25,7 +25,7 @@
 
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
-static void *platform_lock;
+static void *rp_platform_lock;
 
 #if defined(RL_USE_MCMGR_IPC_ISR_HANDLER) && (RL_USE_MCMGR_IPC_ISR_HANDLER == 1)
 static void mcmgr_event_handler(uint16_t vring_idx, void *context)
@@ -66,22 +66,22 @@ void MAILBOX_IRQHandler(void)
 }
 #endif
 
-static void platform_global_isr_disable(void)
+static void rp_platform_global_isr_disable(void)
 {
     __asm volatile("cpsid i");
 }
 
-static void platform_global_isr_enable(void)
+static void rp_platform_global_isr_enable(void)
 {
     __asm volatile("cpsie i");
 }
 
-int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
+int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
     /* Register ISR to environment layer */
     env_register_isr(vector_id, isr_data);
 
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
 
     RL_ASSERT(0 <= isr_counter);
     if (isr_counter == 0)
@@ -94,15 +94,15 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
     }
     isr_counter++;
 
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 
     return 0;
 }
 
-int32_t platform_deinit_interrupt(uint32_t vector_id)
+int32_t rp_platform_deinit_interrupt(uint32_t vector_id)
 {
     /* Prepare the MU Hardware */
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
 
     RL_ASSERT(0 < isr_counter);
     isr_counter--;
@@ -114,24 +114,24 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
     /* Unregister ISR from environment layer */
     env_unregister_isr(vector_id);
 
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 
     return 0;
 }
 
-void platform_notify(uint32_t vector_id)
+void rp_platform_notify(uint32_t vector_id)
 {
 #if defined(RL_USE_MCMGR_IPC_ISR_HANDLER) && (RL_USE_MCMGR_IPC_ISR_HANDLER == 1)
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
     (void)MCMGR_TriggerEventForce(kMCMGR_RemoteRPMsgEvent, (uint16_t)RL_GET_Q_ID(vector_id));
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 #else
     /* Only single RPMsg-Lite instance (LINK_ID) is defined for this dual core device. Extend
        this statement in case multiple instances of RPMsg-Lite are needed. */
     switch (RL_GET_LINK_ID(vector_id))
     {
-        case RL_PLATFORM_LPC5411x_M4_M0_LINK_ID:
-            env_lock_mutex(platform_lock);
+        case RL_rp_platform_LPC5411x_M4_M0_LINK_ID:
+            env_lock_mutex(rp_platform_lock);
 /* Write directly into the Mailbox register, no need to wait until the content is cleared
    (consumed by the receiver side) because the same value of the virtqueue ID is written
    into this register when triggering the ISR for the receiver side. The whole queue of
@@ -141,7 +141,7 @@ void platform_notify(uint32_t vector_id)
 #else
             MAILBOX_SetValueBits(MAILBOX, kMAILBOX_CM4, (1 << RL_GET_Q_ID(vector_id)));
 #endif
-            env_unlock_mutex(platform_lock);
+            env_unlock_mutex(rp_platform_lock);
             return;
 
         default:
@@ -151,13 +151,13 @@ void platform_notify(uint32_t vector_id)
 }
 
 /**
- * platform_time_delay
+ * rp_platform_time_delay
  *
  * @param num_msec Delay time in ms.
  *
  * This is not an accurate delay, it ensures at least num_msec passed when return.
  */
-void platform_time_delay(uint32_t num_msec)
+void rp_platform_time_delay(uint32_t num_msec)
 {
     uint32_t loop;
 
@@ -176,20 +176,20 @@ void platform_time_delay(uint32_t num_msec)
 }
 
 /**
- * platform_in_isr
+ * rp_platform_in_isr
  *
  * Return whether CPU is processing IRQ
  *
  * @return True for IRQ, false otherwise.
  *
  */
-int32_t platform_in_isr(void)
+int32_t rp_platform_in_isr(void)
 {
     return (((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0UL) ? 1 : 0);
 }
 
 /**
- * platform_interrupt_enable
+ * rp_platform_interrupt_enable
  *
  * Enable peripheral-related interrupt
  *
@@ -198,23 +198,23 @@ int32_t platform_in_isr(void)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t platform_interrupt_enable(uint32_t vector_id)
+int32_t rp_platform_interrupt_enable(uint32_t vector_id)
 {
     RL_ASSERT(0 < disable_counter);
 
-    platform_global_isr_disable();
+    rp_platform_global_isr_disable();
     disable_counter--;
 
     if (disable_counter == 0)
     {
         NVIC_EnableIRQ(MAILBOX_IRQn);
     }
-    platform_global_isr_enable();
+    rp_platform_global_isr_enable();
     return ((int32_t)vector_id);
 }
 
 /**
- * platform_interrupt_disable
+ * rp_platform_interrupt_disable
  *
  * Disable peripheral-related interrupt.
  *
@@ -223,11 +223,11 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t platform_interrupt_disable(uint32_t vector_id)
+int32_t rp_platform_interrupt_disable(uint32_t vector_id)
 {
     RL_ASSERT(0 <= disable_counter);
 
-    platform_global_isr_disable();
+    rp_platform_global_isr_disable();
     /* virtqueues use the same NVIC vector
        if counter is set - the interrupts are disabled */
     if (disable_counter == 0)
@@ -235,68 +235,68 @@ int32_t platform_interrupt_disable(uint32_t vector_id)
         NVIC_DisableIRQ(MAILBOX_IRQn);
     }
     disable_counter++;
-    platform_global_isr_enable();
+    rp_platform_global_isr_enable();
     return ((int32_t)vector_id);
 }
 
 /**
- * platform_map_mem_region
+ * rp_platform_map_mem_region
  *
  * Dummy implementation
  *
  */
-void platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
+void rp_platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
 {
 }
 
 /**
- * platform_cache_all_flush_invalidate
+ * rp_platform_cache_all_flush_invalidate
  *
  * Dummy implementation
  *
  */
-void platform_cache_all_flush_invalidate(void)
+void rp_platform_cache_all_flush_invalidate(void)
 {
 }
 
 /**
- * platform_cache_disable
+ * rp_platform_cache_disable
  *
  * Dummy implementation
  *
  */
-void platform_cache_disable(void)
+void rp_platform_cache_disable(void)
 {
 }
 
 /**
- * platform_vatopa
+ * rp_platform_vatopa
  *
  * Dummy implementation
  *
  */
-uint32_t platform_vatopa(void *addr)
+uint32_t rp_platform_vatopa(void *addr)
 {
     return ((uint32_t)(char *)addr);
 }
 
 /**
- * platform_patova
+ * rp_platform_patova
  *
  * Dummy implementation
  *
  */
-void *platform_patova(uint32_t addr)
+void *rp_platform_patova(uint32_t addr)
 {
     return ((void *)(char *)addr);
 }
 
 /**
- * platform_init
+ * rp_platform_init
  *
  * platform/environment init
  */
-int32_t platform_init(void)
+int32_t rp_platform_init(void)
 {
 #if defined(RL_USE_MCMGR_IPC_ISR_HANDLER) && (RL_USE_MCMGR_IPC_ISR_HANDLER == 1)
     mcmgr_status_t retval = kStatus_MCMGR_Error;
@@ -310,7 +310,7 @@ int32_t platform_init(void)
 #endif
 
     /* Create lock used in multi-instanced RPMsg */
-    if (0 != env_create_mutex(&platform_lock, 1))
+    if (0 != env_create_mutex(&rp_platform_lock, 1))
     {
         return -1;
     }
@@ -319,11 +319,11 @@ int32_t platform_init(void)
 }
 
 /**
- * platform_deinit
+ * rp_platform_deinit
  *
  * platform/environment deinit process
  */
-int32_t platform_deinit(void)
+int32_t rp_platform_deinit(void)
 {
 /* Important for LPC5411x - do not deinit mailbox, if there
    is a pending ISR on the other core! */
@@ -340,7 +340,7 @@ int32_t platform_deinit(void)
     MAILBOX_Deinit(MAILBOX);
 
     /* Delete lock used in multi-instanced RPMsg */
-    env_delete_mutex(platform_lock);
-    platform_lock = ((void *)0);
+    env_delete_mutex(rp_platform_lock);
+    rp_platform_lock = ((void *)0);
     return 0;
 }

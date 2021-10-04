@@ -88,7 +88,7 @@ static struct isr_info isr_table[ISR_COUNT];
  */
 static int32_t env_in_isr(void)
 {
-    return platform_in_isr();
+    return rp_platform_in_isr();
 }
 
 /*!
@@ -116,7 +116,7 @@ int32_t env_init(void)
         env_sema = xSemaphoreCreateBinary();
         (void)memset(isr_table, 0, sizeof(isr_table));
         (void)xTaskResumeAll();
-        retval = platform_init();
+        retval = rp_platform_init();
         (void)xSemaphoreGive(env_sema);
 
         return retval;
@@ -125,7 +125,7 @@ int32_t env_init(void)
     {
         (void)xTaskResumeAll();
         /* Get the semaphore and then return it,
-         * this allows for platform_init() to block
+         * this allows for rp_platform_init() to block
          * if needed and other tasks to wait for the
          * blocking to be done.
          * This is in ENV layer as this is ENV specific.*/
@@ -164,7 +164,7 @@ int32_t env_deinit(void)
     {
         // last call
         (void)memset(isr_table, 0, sizeof(isr_table));
-        retval = platform_deinit();
+        retval = rp_platform_deinit();
         vSemaphoreDelete(env_sema);
         env_sema = ((void *)0);
         (void)xTaskResumeAll();
@@ -299,7 +299,7 @@ void env_wmb(void)
  */
 uint32_t env_map_vatopa(void *address)
 {
-    return platform_vatopa(address);
+    return rp_platform_vatopa(address);
 }
 
 /*!
@@ -309,7 +309,7 @@ uint32_t env_map_vatopa(void *address)
  */
 void *env_map_patova(uint32_t address)
 {
-    return platform_patova(address);
+    return rp_platform_patova(address);
 }
 
 /*!
@@ -496,7 +496,7 @@ void env_unregister_isr(uint32_t vector_id)
 
 void env_enable_interrupt(uint32_t vector_id)
 {
-    (void)platform_interrupt_enable(vector_id);
+    (void)rp_platform_interrupt_enable(vector_id);
 }
 
 /*!
@@ -509,7 +509,7 @@ void env_enable_interrupt(uint32_t vector_id)
 
 void env_disable_interrupt(uint32_t vector_id)
 {
-    (void)platform_interrupt_disable(vector_id);
+    (void)rp_platform_interrupt_disable(vector_id);
 }
 
 /*!
@@ -525,7 +525,7 @@ void env_disable_interrupt(uint32_t vector_id)
 
 void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 {
-    platform_map_mem_region(va, pa, size, flags);
+    rp_platform_map_mem_region(va, pa, size, flags);
 }
 
 /*!
@@ -537,8 +537,8 @@ void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 
 void env_disable_cache(void)
 {
-    platform_cache_all_flush_invalidate();
-    platform_cache_disable();
+    rp_platform_cache_all_flush_invalidate();
+    rp_platform_cache_disable();
 }
 
 /*!

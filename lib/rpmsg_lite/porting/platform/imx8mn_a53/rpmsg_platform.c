@@ -1,11 +1,17 @@
 #include <stdio.h>
 #include <string.h>
+#include <arch/arch_ops.h>
+#include <arch/ops.h>
+#include <dev/interrupt.h>
+#include <sys/types.h>
 #include "rpmsg_platform.h"
 #include "rpmsg_env.h"
 #include "rsc_table.h"
 
 #include "fsl_device_registers.h"
-#include "fsl_mu.h"
+#include <fsl_mu.h>
+
+#include <MIMX8MN6_ca53.h>
 
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 #error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
@@ -15,25 +21,15 @@
 
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
-static void *platform_lock;
+static void *rp_platform_lock;
 
-static void platform_global_isr_disable(void)
-{
-    __asm volatile("cpsid i");
-}
-
-static void platform_global_isr_enable(void)
-{
-    __asm volatile("cpsie i");
-}
-
-int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
+int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
     /* Register ISR to environment layer */
     env_register_isr(vector_id, isr_data);
 
     /* Prepare the MU Hardware, enable channel 1 interrupt */
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
 
     RL_ASSERT(0 <= isr_counter);
     if (isr_counter == 0)
@@ -42,15 +38,15 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
     }
     isr_counter++;
 
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 
     return 0;
 }
 
-int32_t platform_deinit_interrupt(uint32_t vector_id)
+int32_t rp_platform_deinit_interrupt(uint32_t vector_id)
 {
     /* Prepare the MU Hardware */
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
 
     RL_ASSERT(0 < isr_counter);
     isr_counter--;
@@ -62,25 +58,25 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
     /* Unregister ISR from environment layer */
     env_unregister_isr(vector_id);
 
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 
     return 0;
 }
 
-void platform_notify(uint32_t vector_id)
+void rp_platform_notify(uint32_t vector_id)
 {
     /* As Linux suggests, use MU->Data Channel 1 as communication channel */
     uint32_t msg = (uint32_t)(vector_id << 16);
 
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
     MU_SendMsg(MUB, RPMSG_MU_CHANNEL, msg);
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 }
 
 /*
  * MU Interrrupt RPMsg handler
  */
-int32_t MU_M7_IRQHandler(void)
+enum handler_return MU_IRQHandler(void* context)
 {
     uint32_t channel;
 
@@ -89,26 +85,20 @@ int32_t MU_M7_IRQHandler(void)
         channel = MU_ReceiveMsgNonBlocking(MUB, RPMSG_MU_CHANNEL); // Read message from RX register.
         env_isr(channel >> 16);
     }
-    /* ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
-     * exception return operation might vector to incorrect interrupt.
-     * For Cortex-M7, if core speed much faster than peripheral register write speed,
-     * the peripheral interrupt flags may be still set after exiting ISR, this results to
-     * the same error similar with errata 83869 */
-#if (defined __CORTEX_M) && ((__CORTEX_M == 4U) || (__CORTEX_M == 7U))
-    __DSB();
-#endif
 
-    return 0;
+    // should we put a memory barrier here?
+
+    return INT_RESCHEDULE;
 }
 
 /**
- * platform_time_delay
+ * rp_platform_time_delay
  *
  * @param num_msec Delay time in ms.
  *
  * This is not an accurate delay, it ensures at least num_msec passed when return.
  */
-void platform_time_delay(uint32_t num_msec)
+void rp_platform_time_delay(uint32_t num_msec)
 {
     uint32_t loop;
 
@@ -127,20 +117,22 @@ void platform_time_delay(uint32_t num_msec)
 }
 
 /**
- * platform_in_isr
+ * rp_platform_in_isr
  *
  * Return whether CPU is processing IRQ
  *
  * @return True for IRQ, false otherwise.
  *
  */
-int32_t platform_in_isr(void)
+int32_t rp_platform_in_isr(void)
 {
-    return (((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0UL) ? 1 : 0);
+    // return (((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0UL) ? 1 : 0);
+    // TODO: fixme
+    return (int32_t)arch_in_int_handler();
 }
 
 /**
- * platform_interrupt_enable
+ * rp_platform_interrupt_enable
  *
  * Enable peripheral-related interrupt
  *
@@ -149,23 +141,24 @@ int32_t platform_in_isr(void)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t platform_interrupt_enable(uint32_t vector_id)
+int32_t rp_platform_interrupt_enable(uint32_t vector_id)
 {
     RL_ASSERT(0 < disable_counter);
 
-    platform_global_isr_disable();
+    rp_platform_global_isr_disable();
     disable_counter--;
 
     if (disable_counter == 0)
     {
-        NVIC_EnableIRQ(MU_M7_IRQn);
+        // NVIC_EnableIRQ(MU_M7_IRQn);
+        // TODO: fixme
     }
-    platform_global_isr_enable();
+    rp_platform_global_isr_enable();
     return ((int32_t)vector_id);
 }
 
 /**
- * platform_interrupt_disable
+ * rp_platform_interrupt_disable
  *
  * Disable peripheral-related interrupt.
  *
@@ -174,80 +167,82 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t platform_interrupt_disable(uint32_t vector_id)
+int32_t rp_platform_interrupt_disable(uint32_t vector_id)
 {
     RL_ASSERT(0 <= disable_counter);
 
-    platform_global_isr_disable();
+    rp_platform_global_isr_disable();
     /* virtqueues use the same NVIC vector
        if counter is set - the interrupts are disabled */
     if (disable_counter == 0)
     {
-        NVIC_DisableIRQ(MU_M7_IRQn);
+        // NVIC_DisableIRQ(MU_M7_IRQn);
+        // TODO: fixme
     }
     disable_counter++;
-    platform_global_isr_enable();
+    rp_platform_global_isr_enable();
     return ((int32_t)vector_id);
 }
 
 /**
- * platform_map_mem_region
+ * rp_platform_map_mem_region
  *
  * Dummy implementation
  *
  */
-void platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
+void rp_platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
 {
 }
 
 /**
- * platform_cache_all_flush_invalidate
+ * rp_platform_cache_all_flush_invalidate
  *
  * Dummy implementation
  *
  */
-void platform_cache_all_flush_invalidate(void)
+void rp_platform_cache_all_flush_invalidate(void)
 {
 }
 
 /**
- * platform_cache_disable
+ * rp_platform_cache_disable
  *
  * Dummy implementation
  *
  */
-void platform_cache_disable(void)
+void rp_platform_cache_disable(void)
 {
+    arch_disable_cache(0);
 }
 
 /**
- * platform_vatopa
+ * rp_platform_vatopa
  *
  * Dummy implementation
  *
  */
-uint32_t platform_vatopa(void *addr)
+uintptr_t rp_platform_vatopa(void *addr)
 {
-    return ((uint32_t)(char *)addr);
+    return ((uintptr_t)(char *)addr);
 }
 
 /**
- * platform_patova
+ * rp_platform_patova
  *
  * Dummy implementation
  *
  */
-void *platform_patova(uint32_t addr)
+void *rp_platform_patova(uintptr_t addr)
 {
     return ((void *)(char *)addr);
 }
 
 /**
- * platform_init
+ * rp_platform_init
  *
  * platform/environment init
  */
-int32_t platform_init(void *shmem_addr)
+int32_t rp_platform_init(void *shmem_addr)
 {
     copyResourceTable(shmem_addr);
 
@@ -256,11 +251,12 @@ int32_t platform_init(void *shmem_addr)
      *  MU must be initialized before rpmsg init is called
      */
     MU_Init(MUB);
-    NVIC_SetPriority(MU_M7_IRQn, APP_MU_IRQ_PRIORITY);
-    NVIC_EnableIRQ(MU_M7_IRQn);
+
+    // NVIC_SetPriority(MU_M7_IRQn, APP_MU_IRQ_PRIORITY);
+    // NVIC_EnableIRQ(MU_M7_IRQn);
 
     /* Create lock used in multi-instanced RPMsg */
-    if (0 != env_create_mutex(&platform_lock, 1))
+    if (0 != env_create_mutex(&rp_platform_lock, 1))
     {
         return -1;
     }
@@ -269,14 +265,14 @@ int32_t platform_init(void *shmem_addr)
 }
 
 /**
- * platform_deinit
+ * rp_platform_deinit
  *
  * platform/environment deinit process
  */
-int32_t platform_deinit(void)
+int32_t rp_platform_deinit(void)
 {
     /* Delete lock used in multi-instanced RPMsg */
-    env_delete_mutex(platform_lock);
-    platform_lock = ((void *)0);
+    env_delete_mutex(rp_platform_lock);
+    rp_platform_lock = ((void *)0);
     return 0;
 }
