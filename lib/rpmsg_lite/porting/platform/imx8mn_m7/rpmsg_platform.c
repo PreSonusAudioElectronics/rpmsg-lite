@@ -7,9 +7,12 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
+
 #include "rpmsg_platform.h"
 #include "rpmsg_env.h"
 #include "rsc_table.h"
+#include "rpmsg_config.h"
 
 #include "fsl_device_registers.h"
 #include "fsl_mu.h"
@@ -23,6 +26,23 @@
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
 static void *rp_platform_lock;
+
+typedef void(*mu_rx_callback_t)(void*);
+
+static mu_rx_callback_t rx_callbacks[MU_RR_COUNT] = {0};
+
+typedef struct platform_instance
+{
+    uintptr_t sharedMemStart;
+    uint32_t muChannel;
+} platform_instance_t;
+
+/*!
+ * @brief Keep track here of which instances use which MU
+ * channels
+ */
+static platform_instance_t gPlatformInstances[MU_RR_COUNT] = {0};
+
 
 static void rp_platform_global_isr_disable(void)
 {
@@ -203,7 +223,7 @@ int32_t rp_platform_interrupt_disable(uint32_t vector_id)
  * Dummy implementation
  *
  */
-void rp_platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
+void rp_platform_map_mem_region(uintptr_t *vrt_addr, uintptr_t phy_addr, uint32_t size, uint32_t flags)
 {
 }
 
@@ -256,6 +276,16 @@ void *rp_platform_patova(uint32_t addr)
  */
 int32_t rp_platform_init(void *shmem_addr)
 {
+    // check if this shmem address has already been initialized
+    for( unsigned i=0; i<MU_RR_COUNT; ++i)
+    {
+        if( gPlatformInstances[i].sharedMemStart == (uintptr_t)shmem_addr )
+        {
+            return -1;
+        }
+    }
+
+    
     copyResourceTable(shmem_addr);
 
     /*
@@ -280,7 +310,7 @@ int32_t rp_platform_init(void *shmem_addr)
  *
  * platform/environment deinit process
  */
-int32_t rp_platform_deinit(void)
+int32_t rp_platform_deinit(void *shared_mem_addr)
 {
     /* Delete lock used in multi-instanced RPMsg */
     env_delete_mutex(rp_platform_lock);

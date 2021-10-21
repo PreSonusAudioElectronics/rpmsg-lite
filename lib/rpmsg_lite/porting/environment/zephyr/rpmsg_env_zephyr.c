@@ -107,7 +107,7 @@ ISR_DIRECT_DECLARE(zephMuHandler)
  * Initializes OS/BM environment.
  *
  */
-int32_t env_init(void *shmem_addr)
+int32_t env_init(void **shmem_addr)
 {
     int32_t retval;
     k_sched_lock(); /* stop scheduler */
@@ -127,7 +127,7 @@ int32_t env_init(void *shmem_addr)
         (void)memset(isr_table, 0, sizeof(isr_table));
         k_sched_unlock();
 
-        retval = rp_platform_init(shmem_addr);
+        retval = rp_platform_init(*shmem_addr);
         /* Here Zephyr overrides whatever rp_platform_init() did with 
         interrupt priorities, etc
         */
@@ -181,7 +181,7 @@ int32_t env_deinit(void)
     {
         /* last call */
         (void)memset(isr_table, 0, sizeof(isr_table));
-        retval = rp_platform_deinit();
+        retval = rp_platform_deinit(NULL);
         k_sem_reset(&env_sema);
         k_sched_unlock();
 
@@ -531,7 +531,7 @@ void env_disable_interrupt(uint32_t vector_id)
  * param flags - flags for cache/uncached  and access type
  */
 
-void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
+void env_map_memory(uintptr_t pa, uintptr_t *va, uint32_t size, uint32_t flags)
 {
     rp_platform_map_mem_region(va, pa, size, flags);
 }
