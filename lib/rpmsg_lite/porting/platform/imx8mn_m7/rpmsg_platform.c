@@ -203,7 +203,7 @@ int32_t rp_platform_interrupt_disable(uint32_t vector_id)
  * Dummy implementation
  *
  */
-void rp_platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
+void rp_platform_map_mem_region(uintptr_t vrt_addr, uintptr_t phy_addr, uint32_t size, uint32_t flags)
 {
 }
 

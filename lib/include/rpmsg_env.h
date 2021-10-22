@@ -87,6 +87,17 @@ extern "C" {
 #include "rpmsg_default_config.h"
 #include "rpmsg_platform.h"
 
+// Set 1 to enable tracing, 0 to disable
+#define RLTRACE_ON (1U)
+
+#define RLTRACE_ENTRY if(RLTRACE_ON) RL_PRINTF("%s(): entry\n", __PRETTY_FUNCTION__)
+#define RLTRACE_EXIT if(RLTRACE_ON) RL_PRINTF("%s(): exit @line %d\n", __PRETTY_FUNCTION__, __LINE__)
+#define RLTRACE if(RLTRACE_ON) RL_PRINTF("%s():%d\n", __PRETTY_FUNCTION__, __LINE__)
+#define RLTRACEF(str, x...) if(RLTRACE_ON) do { RL_PRINTF("%s():%d: " str, __PRETTY_FUNCTION__, __LINE__, ## x); } while (0)
+
+void env_flush_spin(void);
+
+#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 /*!
  * env_init
  *
@@ -97,10 +108,25 @@ extern "C" {
  *
  * @returns - execution status
  */
-#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 int32_t env_init(void **env_context, void *env_init_data);
 #else
-int32_t env_init(void *shmem_addr);
+/*!
+ * @brief env_init
+ *
+ * Initializes OS/BM environment
+ * Usage example:
+ * 
+ * void *shmem_ptr = SHARED_MEM_START_ADDRESS;
+ * env_init( &shmem_ptr );
+ * 
+ * ATTENTION: On some platforms, this function may modify the value of shmem_addr.
+ * The API is done this way so that platforms with an MMU can convert the physical
+ * address to a virtual one at the platform layer.
+ * 
+ * @param shmem_addr 
+ * @return int32_t 
+ */
+int32_t env_init(void **shmem_addr);
 #endif
 
 /*!
@@ -443,7 +469,7 @@ void env_disable_interrupt(uint32_t vector_id);
 #define SHARED_MEM (1 << 6)
 #define TLB_MEM    (1 << 7)
 
-void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags);
+void env_map_memory(uintptr_t pa, uintptr_t *va, uint32_t size, uint32_t flags);
 
 /*!
  * env_get_timestamp

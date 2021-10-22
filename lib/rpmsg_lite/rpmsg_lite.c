@@ -936,7 +936,7 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
     status = env_init(&rpmsg_lite_dev->env, env_cfg);
 #else
-    status = env_init(shmem_addr);
+    status = env_init(&shmem_addr);
 #endif
     if (status != RL_SUCCESS)
     {
@@ -1136,7 +1136,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
     status = env_init(&rpmsg_lite_dev->env, env_cfg);
 #else
-    status = env_init(shmem_addr);
+    status = env_init(&shmem_addr);
 #endif
 
     if (status != RL_SUCCESS)

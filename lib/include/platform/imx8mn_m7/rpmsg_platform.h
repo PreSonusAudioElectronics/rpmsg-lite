@@ -62,7 +62,7 @@ void rp_platform_notify(uint32_t vector_id);
 void rp_platform_time_delay(uint32_t num_msec);
 
 /* platform memory functions */
-void rp_platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags);
+void rp_platform_map_mem_region(uintptr_t vrt_addr, uintptr_t phy_addr, uint32_t size, uint32_t flags);
 void rp_platform_cache_all_flush_invalidate(void);
 void rp_platform_cache_disable(void);
 uint32_t rp_platform_vatopa(void *addr);
