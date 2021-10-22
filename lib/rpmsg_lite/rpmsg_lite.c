@@ -908,7 +908,7 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
         return RL_NULL;
     }
 
-    if (link_id > RL_rp_platform_HIGHEST_LINK_ID)
+    if (link_id > RL_PLATFORM_HIGHEST_LINK_ID)
     {
         return RL_NULL;
     }
@@ -1108,7 +1108,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     uint32_t idx;
     struct rpmsg_lite_instance *rpmsg_lite_dev = RL_NULL;
 
-    if (link_id > RL_rp_platform_HIGHEST_LINK_ID)
+    if (link_id > RL_PLATFORM_HIGHEST_LINK_ID)
     {
         return RL_NULL;
     }

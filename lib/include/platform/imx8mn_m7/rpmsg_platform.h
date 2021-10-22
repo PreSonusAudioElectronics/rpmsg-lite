@@ -51,25 +51,25 @@
 #define MU_IRQ_HANDLER (MU_M7_IRQHandler)
 
 /* platform interrupt related functions */
-int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data);
-int32_t platform_deinit_interrupt(uint32_t vector_id);
-int32_t platform_interrupt_enable(uint32_t vector_id);
-int32_t platform_interrupt_disable(uint32_t vector_id);
-int32_t platform_in_isr(void);
-void platform_notify(uint32_t vector_id);
+int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data);
+int32_t rp_platform_deinit_interrupt(uint32_t vector_id);
+int32_t rp_platform_interrupt_enable(uint32_t vector_id);
+int32_t rp_platform_interrupt_disable(uint32_t vector_id);
+int32_t rp_platform_in_isr(void);
+void rp_platform_notify(uint32_t vector_id);
 
 /* platform low-level time-delay (busy loop) */
-void platform_time_delay(uint32_t num_msec);
+void rp_platform_time_delay(uint32_t num_msec);
 
 /* platform memory functions */
-void platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags);
-void platform_cache_all_flush_invalidate(void);
-void platform_cache_disable(void);
-uint32_t platform_vatopa(void *addr);
-void *platform_patova(uint32_t addr);
+void rp_platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags);
+void rp_platform_cache_all_flush_invalidate(void);
+void rp_platform_cache_disable(void);
+uint32_t rp_platform_vatopa(void *addr);
+void *rp_platform_patova(uint32_t addr);
 
 /* platform init/deinit */
-int32_t platform_init(void *shmem_addr);
-int32_t platform_deinit(void);
+int32_t rp_platform_init(void *shmem_addr);
+int32_t rp_platform_deinit(void);
 
 #endif /* RPMSG_PLATFORM_H_ */
