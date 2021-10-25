@@ -32,6 +32,7 @@
 
 #include "rpmsg_lite.h"
 #include "rpmsg_platform.h"
+#include "rpmsg_trace.h"
 
 /* rpmsg_std_hdr contains a reserved field,
  * this implementation of RPMSG uses this reserved
@@ -1179,6 +1180,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
             return RL_NULL;
         }
 
+        RLTRACEF("vq %d created with mem at: %p\n", idx, vqs[idx]->vq_ring_mem );
         /* virtqueue has reference to the RPMsg Lite instance */
         vqs[idx]->priv = (void *)rpmsg_lite_dev;
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
