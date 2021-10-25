@@ -90,11 +90,6 @@ extern "C" {
 // Set 1 to enable tracing, 0 to disable
 #define RLTRACE_ON (1U)
 
-#define RLTRACE_ENTRY if(RLTRACE_ON) RL_PRINTF("%s(): entry\n", __PRETTY_FUNCTION__)
-#define RLTRACE_EXIT if(RLTRACE_ON) RL_PRINTF("%s(): exit @line %d\n", __PRETTY_FUNCTION__, __LINE__)
-#define RLTRACE if(RLTRACE_ON) RL_PRINTF("%s():%d\n", __PRETTY_FUNCTION__, __LINE__)
-#define RLTRACEF(str, x...) if(RLTRACE_ON) do { RL_PRINTF("%s():%d: " str, __PRETTY_FUNCTION__, __LINE__, ## x); } while (0)
-
 void env_flush_spin(void);
 
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)

@@ -29,6 +29,9 @@
 
 #include "rpmsg_env.h"
 #include "virtqueue.h"
+#include "rpmsg_trace.h"
+
+#define LOCAL_TRACE 1
 
 /* Prototype for internal functions. */
 static void vq_ring_update_avail(struct virtqueue *vq, uint16_t desc_idx);
@@ -95,6 +98,8 @@ int32_t virtqueue_create(uint16_t id,
         vring_init(&vq->vq_ring, vq->vq_nentries, vq->vq_ring_mem, (uint32_t)vq->vq_alignment);
 
         *v_queue = vq;
+
+        L_RLTRACEF("id: %d, ring mem: %p\n", id, vq->vq_ring_mem);
     }
 
     return (status);
