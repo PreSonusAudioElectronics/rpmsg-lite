@@ -32,6 +32,7 @@
 
 #include "rpmsg_lite.h"
 #include "rpmsg_platform.h"
+#include "rpmsg_trace.h"
 
 /* rpmsg_std_hdr contains a reserved field,
  * this implementation of RPMSG uses this reserved
@@ -983,6 +984,7 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
 
         if (status == RL_SUCCESS)
         {
+            RLTRACEF("vq idx %d created with mem at: %p\n", idx, vqs[idx]->vq_ring_mem);
             /* Initialize vring control block in virtqueue. */
             vq_ring_init(vqs[idx]);
 
@@ -1184,6 +1186,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
         vqs[idx]->env = rpmsg_lite_dev->env;
 #endif
+        RLTRACEF("vq %d with memstart: %p\n", idx, vqs[idx]->vq_ring_mem );
     }
 
     status = env_create_mutex((LOCK *)&rpmsg_lite_dev->lock, 1);
