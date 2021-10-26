@@ -17,31 +17,28 @@
 #include "fsl_device_registers.h"
 #include "fsl_mu.h"
 
-#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
+#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 0)
+#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 1"
 #endif
 
-#define APP_MU_IRQ_PRIORITY (3U)
+/////////////////////////////////////////////////////////////////////////////////
+// Declaring these here because they are unique to imx8mn_cm7 / zephyr combo
+int env_get_channel( void *env );
+void *env_get_env(uint32_t channel);
 
-static int32_t isr_counter     = 0;
+/////////////////////////////////////////////////////////////////////////////////
+
+#define APP_MU_IRQ_PRIORITY (3U)
+#define RL_MASK_MU_CHAN0_IRQ (1UL << 27U)
+
+static inline uint32_t getChanMask(uint32_t channel)
+{
+    RL_ASSERT( channel < RL_N_PLATFORM_CHANS );
+    return RL_MASK_MU_CHAN0_IRQ >> channel;
+}
+
 static int32_t disable_counter = 0;
 static void *rp_platform_lock;
-
-typedef void(*mu_rx_callback_t)(void*);
-
-static mu_rx_callback_t rx_callbacks[MU_RR_COUNT] = {0};
-
-typedef struct platform_instance
-{
-    uintptr_t sharedMemStart;
-    uint32_t muChannel;
-} platform_instance_t;
-
-/*!
- * @brief Keep track here of which instances use which MU
- * channels
- */
-static platform_instance_t gPlatformInstances[MU_RR_COUNT] = {0};
 
 
 static void rp_platform_global_isr_disable(void)
@@ -54,53 +51,12 @@ static void rp_platform_global_isr_enable(void)
     __asm volatile("cpsie i");
 }
 
-int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
+void rp_platform_notify(void *env, uint32_t vector_id)
 {
-    /* Register ISR to environment layer */
-    env_register_isr(vector_id, isr_data);
-
-    /* Prepare the MU Hardware, enable channel 1 interrupt */
+    uint32_t channel = env_get_channel(env);
     env_lock_mutex(rp_platform_lock);
-
-    RL_ASSERT(0 <= isr_counter);
-    if (isr_counter == 0)
-    {
-        MU_EnableInterrupts(MUB, (1UL << 27U) >> RPMSG_MU_CHANNEL);
-    }
-    isr_counter++;
-
-    env_unlock_mutex(rp_platform_lock);
-
-    return 0;
-}
-
-int32_t rp_platform_deinit_interrupt(uint32_t vector_id)
-{
-    /* Prepare the MU Hardware */
-    env_lock_mutex(rp_platform_lock);
-
-    RL_ASSERT(0 < isr_counter);
-    isr_counter--;
-    if (isr_counter == 0)
-    {
-        MU_DisableInterrupts(MUB, (1UL << 27U) >> RPMSG_MU_CHANNEL);
-    }
-
-    /* Unregister ISR from environment layer */
-    env_unregister_isr(vector_id);
-
-    env_unlock_mutex(rp_platform_lock);
-
-    return 0;
-}
-
-void rp_platform_notify(uint32_t vector_id)
-{
-    /* As Linux suggests, use MU->Data Channel 1 as communication channel */
     uint32_t msg = (uint32_t)(vector_id << 16);
-
-    env_lock_mutex(rp_platform_lock);
-    MU_SendMsg(MUB, RPMSG_MU_CHANNEL, msg);
+    MU_SendMsg(MUB, channel, msg);
     env_unlock_mutex(rp_platform_lock);
 }
 
@@ -109,13 +65,17 @@ void rp_platform_notify(uint32_t vector_id)
  */
 int32_t MU_M7_IRQHandler(void)
 {
-    uint32_t channel;
-
-    if ((((1UL << 27U) >> RPMSG_MU_CHANNEL) & MU_GetStatusFlags(MUB)) != 0UL)
+    uint32_t vector;
+    for( uint32_t channel=0; channel<RL_N_PLATFORM_CHANS; ++channel )
     {
-        channel = MU_ReceiveMsgNonBlocking(MUB, RPMSG_MU_CHANNEL); // Read message from RX register.
-        env_isr(channel >> 16);
+        if ( (getChanMask(channel) & MU_GetStatusFlags(MUB)) != 0UL )
+        {
+            vector = MU_ReceiveMsgNonBlocking(MUB, channel); // Read message from RX register.
+            env_isr( env_get_env(channel), vector >> 16);
+        }
+
     }
+
     /* ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
      * exception return operation might vector to incorrect interrupt.
      * For Cortex-M7, if core speed much faster than peripheral register write speed,
@@ -276,15 +236,6 @@ void *rp_platform_patova(uint32_t addr)
  */
 int32_t rp_platform_init(void *shmem_addr)
 {
-    // check if this shmem address has already been initialized
-    for( unsigned i=0; i<MU_RR_COUNT; ++i)
-    {
-        if( gPlatformInstances[i].sharedMemStart == (uintptr_t)shmem_addr )
-        {
-            return -1;
-        }
-    }
-
     
     copyResourceTable(shmem_addr);
 
@@ -317,3 +268,50 @@ int32_t rp_platform_deinit(void *shared_mem_addr)
     rp_platform_lock = ((void *)0);
     return 0;
 }
+
+
+#if 0
+int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
+{
+    /* Register ISR to environment layer */
+    env_register_isr(vector_id, isr_data);
+
+    /* Prepare the MU Hardware, enable channel 1 interrupt */
+    env_lock_mutex(rp_platform_lock);
+
+    RL_ASSERT(0 <= isr_counter);
+    if (isr_counter == 0)
+    {
+        MU_EnableInterrupts(MUB, (1UL << 27U) >> RPMSG_MU_CHANNEL);
+    }
+    isr_counter++;
+
+    env_unlock_mutex(rp_platform_lock);
+
+    return 0;
+}
+
+int32_t rp_platform_deinit_interrupt(void *env, uint32_t vector_id)
+{
+    RL_ASSERT( env );
+    uint32_t channel = env_get_channel( env );
+
+    /* Prepare the MU Hardware */
+    env_lock_mutex(rp_platform_lock);
+
+    RL_ASSERT(0 < isr_counter);
+    isr_counter--;
+    if (isr_counter == 0)
+    {
+        MU_DisableInterrupts(MUB, getChanMask(channel) );
+    }
+
+    /* Unregister ISR from environment layer */
+    env_unregister_isr(env, vector_id);
+
+    env_unlock_mutex(rp_platform_lock);
+
+    return 0;
+}
+#endif
+

@@ -48,14 +48,17 @@
 #include "rpmsg_platform.h"
 #include "virtqueue.h"
 #include "rpmsg_compiler.h"
+#include "rpmsg_config.h"
+#include "rpmsg_lite.h"
+#include "rpmsg_trace.h"
 
 #define APP_MU_IRQ_PRIORITY (3U)
 
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
+#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 0)
+#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 1"
 #endif
 
 /* RL_ENV_MAX_MUTEX_COUNT is an arbitrary count greater than 'count'
@@ -68,11 +71,10 @@
 
 extern int32_t MU_IRQ_HANDLER(void);
 
-static int32_t env_init_counter = 0;
 static struct k_sem env_sema    = {0};
 
-/* Max supported ISR counts */
-#define ISR_COUNT (32U)
+/* Max supported ISR's per MU channel */
+#define ENV_N_ISRS_PER_CHAN (32U)
 /*!
  * Structure to keep track of registered ISR's.
  */
@@ -80,7 +82,23 @@ struct isr_info
 {
     void *data;
 };
-static struct isr_info isr_table[ISR_COUNT];
+static struct isr_info isr_table[RL_N_PLATFORM_CHANS][ENV_N_ISRS_PER_CHAN] = {0};
+
+struct env_context
+{
+    uint32_t phy_channel;
+    uintptr_t shmem_address;
+    bool initialized;
+};
+
+static struct env_context environments[RL_N_PLATFORM_CHANS] = {0};
+
+static inline struct env_context *get_context(void *env)
+{
+    RL_ASSERT( env );
+    struct env_context *context = (struct env_context*)env;
+    return context;
+}
 
 /*!
  * env_in_isr
@@ -107,91 +125,309 @@ ISR_DIRECT_DECLARE(zephMuHandler)
  * Initializes OS/BM environment.
  *
  */
-int32_t env_init(void **shmem_addr)
+int32_t env_init(void **env_context, void *env_init_data)
 {
-    int32_t retval;
+    int32_t retval = RL_SUCCESS;
+
+    if( !env_context || !env_init_data ) {
+        retval = RL_ERR_PARAM;
+        goto exit;
+    }
+
+    struct rpmsg_lite_env_init_data *init_data = (struct rpmsg_lite_env_init_data*)env_init_data;
+
+    uint32_t phy_channel = init_data->mu_channel;
+
+    if( environments[phy_channel].initialized ) {
+        retval = RL_ERR_PARAM;
+        goto exit;
+    }
+
+    if( init_data->shmem_addr == NULL ) {
+        retval = RL_ERR_PARAM;
+        goto exit;
+    }
+
+    if( init_data->mu_channel >= RL_N_PLATFORM_CHANS ) {
+        retval = RL_ERR_PARAM;
+        goto exit;
+    }
+    
+    k_sched_lock();
+
+    environments[phy_channel].phy_channel = phy_channel;
+    environments[phy_channel].shmem_address = (uintptr_t)init_data->shmem_addr;
+
+    /* first call */
+    k_sem_init(&env_sema, 0, 1);
+
+    retval = rp_platform_init( init_data->shmem_addr );
+
+    // Directly populate the M7 core vector table with the handler address, same as the freertos port
+    IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
+    irq_enable(MU_M7_IRQn);
+
+    environments[phy_channel].initialized = true;
+    *env_context = &( environments[phy_channel] );
+    k_sem_give(&env_sema);
+
+    k_sched_unlock();
+exit:
+    return retval;
+}
+
+
+int32_t env_deinit(void *env)
+{
+    struct env_context *context = get_context(env);
+
+    RL_ASSERT_MSG("Can't de-init uninitialized environment!\n",
+        context->initialized );
+
     k_sched_lock(); /* stop scheduler */
-    /* verify 'env_init_counter' */
-    RL_ASSERT(env_init_counter >= 0);
-    if (env_init_counter < 0)
-    {
-        k_sched_unlock(); /* re-enable scheduler */
-        return -1;
+
+    /* last call */
+    (void)memset(isr_table[context->phy_channel], 0, ENV_N_ISRS_PER_CHAN * sizeof(struct isr_info));
+    k_sem_reset(&env_sema);
+    k_sched_unlock();
+
+    return 0;
+}
+
+// not used in this port
+void env_register_isr(void *env, uint32_t vector_id, void *data)
+{
+    RLTRACE_ENTRY;
+}
+// not used in this port
+void env_unregister_isr(void * env, uint32_t vector_id)
+{
+    RLTRACE_ENTRY;
+}
+
+// using asserts since returns are not checked by caller
+int32_t env_init_interrupt(void *env, int32_t vq_id, void *isr_data)
+{
+    struct env_context *context = get_context(env);
+    RL_ASSERT( context->initialized );
+    if( isr_table[context->phy_channel][vq_id].data != NULL ) {
+        RLTRACEF("WARNING: overwriting existing isr setting.\n");
     }
-    env_init_counter++;
-    /* multiple call of 'env_init' - return ok */
-    if (env_init_counter == 1)
+    RL_ASSERT(vq_id < ENV_N_ISRS_PER_CHAN);
+    if (vq_id < ENV_N_ISRS_PER_CHAN)
     {
-        /* first call */
-        k_sem_init(&env_sema, 0, 1);
-        (void)memset(isr_table, 0, sizeof(isr_table));
-        k_sched_unlock();
-
-        retval = rp_platform_init(*shmem_addr);
-        /* Here Zephyr overrides whatever rp_platform_init() did with 
-        interrupt priorities, etc
-        */
-
-        // Directly populate the M7 core vector table with the handler address, same as the freertos port
-        IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
-        irq_enable(MU_M7_IRQn);
-
-        k_sem_give(&env_sema);
-
-        return retval;
+        isr_table[context->phy_channel][vq_id].data = isr_data;
     }
-    else
+    return 0;
+}
+
+int32_t env_deinit_interrupt(void *env, int32_t vq_id)
+{
+    struct env_context *context = get_context(env);
+    RL_ASSERT(vq_id < ENV_N_ISRS_PER_CHAN);
+    if( isr_table[context->phy_channel][vq_id].data == NULL ) {
+        RLTRACEF("WARNING: already unregistered!\n");
+    }
+
+    isr_table[context->phy_channel][vq_id].data = NULL;
+    return 0;
+}
+
+
+void env_isr(void *env, uint32_t vector)
+{
+    struct env_context *context = get_context(env);
+    uint32_t channel = context->phy_channel;
+    RL_ASSERT(vector < ENV_N_ISRS_PER_CHAN);
+    if (vector < ENV_N_ISRS_PER_CHAN)
     {
-        k_sched_unlock();
-        /* Get the semaphore and then return it,
-         * this allows for rp_platform_init() to block
-         * if needed and other tasks to wait for the
-         * blocking to be done.
-         * This is in ENV layer as this is ENV specific.*/
-        k_sem_take(&env_sema, K_FOREVER);
-        k_sem_give(&env_sema);
-        return 0;
+        struct isr_info *info = &isr_table[channel][vector];
+        virtqueue_notification((struct virtqueue *)info->data);
     }
 }
 
-/*!
- * env_deinit
- *
- * Uninitializes OS/BM environment.
- *
- * @returns - execution status
- */
-int32_t env_deinit(void)
+int env_get_channel( void *env )
 {
-    int32_t retval;
-
-    k_sched_lock(); /* stop scheduler */
-    /* verify 'env_init_counter' */
-    RL_ASSERT(env_init_counter > 0);
-    if (env_init_counter <= 0)
-    {
-        k_sched_unlock(); /* re-enable scheduler */
+    struct env_context *context = get_context(env);
+    if( context != &(environments[context->phy_channel]) ) {
         return -1;
     }
-
-    /* counter on zero - call platform deinit */
-    env_init_counter--;
-    /* multiple call of 'env_deinit' - return ok */
-    if (env_init_counter <= 0)
-    {
-        /* last call */
-        (void)memset(isr_table, 0, sizeof(isr_table));
-        retval = rp_platform_deinit(NULL);
-        k_sem_reset(&env_sema);
-        k_sched_unlock();
-
-        return retval;
+    else {
+        return context->phy_channel;
     }
-    else
+}
+
+void *env_get_env(uint32_t channel)
+{
+    RL_ASSERT( channel < RL_N_PLATFORM_CHANS );
+    RL_ASSERT( environments[channel].initialized );
+    return &(environments[channel]);
+}
+
+bool env_is_initialized( void *shmem_base )
+{
+    for( unsigned i=0; i<RL_N_PLATFORM_CHANS; ++i )
     {
-        k_sched_unlock();
-        return 0;
+        if( environments[i].shmem_address == (uintptr_t)shmem_base )
+        {
+            return environments[i].initialized;
+        }
     }
+    return false;
+}
+
+void env_enable_interrupt(void *env, uint32_t vector_id)
+{
+    (void)rp_platform_interrupt_enable(vector_id);
+}
+
+
+void env_disable_interrupt(void * env, uint32_t vector_id)
+{
+    (void)rp_platform_interrupt_disable(vector_id);
+}
+
+
+/*!
+ * env_map_memory
+ *
+ * Enables memory mapping for given memory region.
+ *
+ * @param pa   - physical address of memory
+ * @param va   - logical address of memory
+ * @param size - memory size
+ * param flags - flags for cache/uncached  and access type
+ */
+
+void env_map_memory(uintptr_t pa, uintptr_t *va, uint32_t size, uint32_t flags)
+{
+    rp_platform_map_mem_region(va, pa, size, flags);
+}
+
+/*!
+ * env_disable_cache
+ *
+ * Disables system caches.
+ *
+ */
+
+void env_disable_cache(void)
+{
+    rp_platform_cache_all_flush_invalidate();
+    rp_platform_cache_disable();
+}
+
+/*========================================================= */
+/* Util data / functions  */
+
+/*
+ * env_create_queue
+ *
+ * Creates a message queue.
+ *
+ * @param queue -  pointer to created queue
+ * @param length -  maximum number of elements in the queue
+ * @param element_size - queue element size in bytes
+ *
+ * @return - status of function execution
+ */
+int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
+{
+    struct k_msgq *queue_ptr = ((void *)0);
+    char *msgq_buffer_ptr    = ((void *)0);
+
+    queue_ptr       = (struct k_msgq *)env_allocate_memory(sizeof(struct k_msgq));
+    msgq_buffer_ptr = (char *)env_allocate_memory(length * element_size);
+    if ((queue_ptr == ((void *)0)) || (msgq_buffer_ptr == ((void *)0)))
+    {
+        return -1;
+    }
+    k_msgq_init(queue_ptr, msgq_buffer_ptr, element_size, length);
+
+    *queue = (void *)queue_ptr;
+    return 0;
+}
+
+/*!
+ * env_delete_queue
+ *
+ * Deletes the message queue.
+ *
+ * @param queue - queue to delete
+ */
+
+void env_delete_queue(void *queue)
+{
+    k_msgq_purge((struct k_msgq *)queue);
+    env_free_memory(((struct k_msgq *)queue)->buffer_start);
+    env_free_memory(queue);
+}
+
+/*!
+ * env_put_queue
+ *
+ * Put an element in a queue.
+ *
+ * @param queue - queue to put element in
+ * @param msg - pointer to the message to be put into the queue
+ * @param timeout_ms - timeout in ms
+ *
+ * @return - status of function execution
+ */
+
+int32_t env_put_queue(void *queue, void *msg, uint32_t timeout_ms)
+{
+    if (env_in_isr() != 0)
+    {
+        timeout_ms = 0; /* force timeout == 0 when in ISR */
+    }
+
+    if (0 == k_msgq_put((struct k_msgq *)queue, msg, K_MSEC(timeout_ms)))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/*!
+ * env_get_queue
+ *
+ * Get an element out of a queue.
+ *
+ * @param queue - queue to get element from
+ * @param msg - pointer to a memory to save the message
+ * @param timeout_ms - timeout in ms
+ *
+ * @return - status of function execution
+ */
+
+int32_t env_get_queue(void *queue, void *msg, uint32_t timeout_ms)
+{
+    if (env_in_isr() != 0)
+    {
+        timeout_ms = 0; /* force timeout == 0 when in ISR */
+    }
+
+    if (0 == k_msgq_get((struct k_msgq *)queue, msg, K_MSEC(timeout_ms)))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/*!
+ * env_get_current_queue_size
+ *
+ * Get current queue size.
+ *
+ * @param queue - queue pointer
+ *
+ * @return - Number of queued items in the queue
+ */
+
+int32_t env_get_current_queue_size(void *queue)
+{
+    return k_msgq_num_used_get((struct k_msgq *)queue);
 }
 
 /*!
@@ -313,7 +549,7 @@ void env_wmb(void)
  *
  * @param address
  */
-uintptr_t env_map_vatopa(void *address)
+uintptr_t env_map_vatopa(void *env, void *address)
 {
     return rp_platform_vatopa(address);
 }
@@ -323,7 +559,7 @@ uintptr_t env_map_vatopa(void *address)
  *
  * @param address
  */
-void *env_map_patova(uintptr_t address)
+void *env_map_patova(void *env, uintptr_t address)
 {
     return rp_platform_patova(address);
 }
@@ -461,214 +697,10 @@ void env_yield(void)
     k_yield();
 }
 
-/*!
- * env_register_isr
- *
- * Registers interrupt handler data for the given interrupt vector.
- *
- * @param vector_id - virtual interrupt vector number
- * @param data      - interrupt handler data (virtqueue)
- */
-void env_register_isr(uint16_t vector_id, void *data)
+void *env_get_platform_context(void *env_context)
 {
-    RL_ASSERT(vector_id < ISR_COUNT);
-    if (vector_id < ISR_COUNT)
-    {
-        isr_table[vector_id].data = data;
-    }
+    // Don't call me
+    RL_ASSERT(0);
 }
 
-/*!
- * env_unregister_isr
- *
- * Unregisters interrupt handler data for the given interrupt vector.
- *
- * @param vector_id - virtual interrupt vector number
- */
-void env_unregister_isr(uint16_t vector_id)
-{
-    RL_ASSERT(vector_id < ISR_COUNT);
-    if (vector_id < ISR_COUNT)
-    {
-        isr_table[vector_id].data = ((void *)0);
-    }
-}
 
-/*!
- * env_enable_interrupt
- *
- * Enables the given interrupt
- *
- * @param vector_id   - interrupt vector number
- */
-
-void env_enable_interrupt(uint32_t vector_id)
-{
-    (void)rp_platform_interrupt_enable(vector_id);
-}
-
-/*!
- * env_disable_interrupt
- *
- * Disables the given interrupt
- *
- * @param vector_id   - interrupt vector number
- */
-
-void env_disable_interrupt(uint32_t vector_id)
-{
-    (void)rp_platform_interrupt_disable(vector_id);
-}
-
-/*!
- * env_map_memory
- *
- * Enables memory mapping for given memory region.
- *
- * @param pa   - physical address of memory
- * @param va   - logical address of memory
- * @param size - memory size
- * param flags - flags for cache/uncached  and access type
- */
-
-void env_map_memory(uintptr_t pa, uintptr_t *va, uint32_t size, uint32_t flags)
-{
-    rp_platform_map_mem_region(va, pa, size, flags);
-}
-
-/*!
- * env_disable_cache
- *
- * Disables system caches.
- *
- */
-
-void env_disable_cache(void)
-{
-    rp_platform_cache_all_flush_invalidate();
-    rp_platform_cache_disable();
-}
-
-/*========================================================= */
-/* Util data / functions  */
-
-void env_isr(uint32_t vector)
-{
-    struct isr_info *info;
-    RL_ASSERT(vector < ISR_COUNT);
-    if (vector < ISR_COUNT)
-    {
-        info = &isr_table[vector];
-        virtqueue_notification((struct virtqueue *)info->data);
-    }
-}
-
-/*
- * env_create_queue
- *
- * Creates a message queue.
- *
- * @param queue -  pointer to created queue
- * @param length -  maximum number of elements in the queue
- * @param element_size - queue element size in bytes
- *
- * @return - status of function execution
- */
-int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
-{
-    struct k_msgq *queue_ptr = ((void *)0);
-    char *msgq_buffer_ptr    = ((void *)0);
-
-    queue_ptr       = (struct k_msgq *)env_allocate_memory(sizeof(struct k_msgq));
-    msgq_buffer_ptr = (char *)env_allocate_memory(length * element_size);
-    if ((queue_ptr == ((void *)0)) || (msgq_buffer_ptr == ((void *)0)))
-    {
-        return -1;
-    }
-    k_msgq_init(queue_ptr, msgq_buffer_ptr, element_size, length);
-
-    *queue = (void *)queue_ptr;
-    return 0;
-}
-
-/*!
- * env_delete_queue
- *
- * Deletes the message queue.
- *
- * @param queue - queue to delete
- */
-
-void env_delete_queue(void *queue)
-{
-    k_msgq_purge((struct k_msgq *)queue);
-    env_free_memory(((struct k_msgq *)queue)->buffer_start);
-    env_free_memory(queue);
-}
-
-/*!
- * env_put_queue
- *
- * Put an element in a queue.
- *
- * @param queue - queue to put element in
- * @param msg - pointer to the message to be put into the queue
- * @param timeout_ms - timeout in ms
- *
- * @return - status of function execution
- */
-
-int32_t env_put_queue(void *queue, void *msg, uint32_t timeout_ms)
-{
-    if (env_in_isr() != 0)
-    {
-        timeout_ms = 0; /* force timeout == 0 when in ISR */
-    }
-
-    if (0 == k_msgq_put((struct k_msgq *)queue, msg, K_MSEC(timeout_ms)))
-    {
-        return 1;
-    }
-    return 0;
-}
-
-/*!
- * env_get_queue
- *
- * Get an element out of a queue.
- *
- * @param queue - queue to get element from
- * @param msg - pointer to a memory to save the message
- * @param timeout_ms - timeout in ms
- *
- * @return - status of function execution
- */
-
-int32_t env_get_queue(void *queue, void *msg, uint32_t timeout_ms)
-{
-    if (env_in_isr() != 0)
-    {
-        timeout_ms = 0; /* force timeout == 0 when in ISR */
-    }
-
-    if (0 == k_msgq_get((struct k_msgq *)queue, msg, K_MSEC(timeout_ms)))
-    {
-        return 1;
-    }
-    return 0;
-}
-
-/*!
- * env_get_current_queue_size
- *
- * Get current queue size.
- *
- * @param queue - queue pointer
- *
- * @return - Number of queued items in the queue
- */
-
-int32_t env_get_current_queue_size(void *queue)
-{
-    return k_msgq_num_used_get((struct k_msgq *)queue);
-}

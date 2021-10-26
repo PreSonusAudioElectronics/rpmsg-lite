@@ -416,7 +416,7 @@ static void virtqueue_notify(struct virtqueue *vq)
 {
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
     struct rpmsg_lite_instance *inst = vq->priv;
-    rp_platform_notify(inst->env ? env_get_rp_platform_context(inst->env) : RL_NULL, vq->vq_queue_index);
+    rp_platform_notify(inst->env ? env_get_platform_context(inst->env) : RL_NULL, vq->vq_queue_index);
 #else
     rp_platform_notify(vq->vq_queue_index);
 #endif

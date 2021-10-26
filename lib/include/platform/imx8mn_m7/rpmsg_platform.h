@@ -13,7 +13,9 @@
 #include "MIMX8MN6_cm7.h"
 
 /* RPMSG MU channel index */
-#define RPMSG_MU_CHANNEL (1)
+// #define RPMSG_MU_CHANNEL (1)
+
+#define RL_N_PLATFORM_CHANS (4U)
 
 /*
  * Linux requires the ALIGN to 0x1000(4KB) instead of 0x80
@@ -56,7 +58,8 @@ int32_t rp_platform_deinit_interrupt(uint32_t vector_id);
 int32_t rp_platform_interrupt_enable(uint32_t vector_id);
 int32_t rp_platform_interrupt_disable(uint32_t vector_id);
 int32_t rp_platform_in_isr(void);
-void rp_platform_notify(uint32_t vector_id);
+
+void rp_platform_notify(void *env, uint32_t vector_id);
 
 /* platform low-level time-delay (busy loop) */
 void rp_platform_time_delay(uint32_t num_msec);
