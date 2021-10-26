@@ -16,6 +16,7 @@
 
 #include "fsl_device_registers.h"
 #include "fsl_mu.h"
+#include "MIMX8MN6_cm7.h"
 
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 0)
 #error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 1"
@@ -31,10 +32,16 @@ void *env_get_env(uint32_t channel);
 #define APP_MU_IRQ_PRIORITY (3U)
 #define RL_MASK_MU_CHAN0_IRQ (1UL << 27U)
 
-static inline uint32_t getChanMask(uint32_t channel)
+static inline uint32_t getRxChanMask(uint32_t channel)
 {
     RL_ASSERT( channel < RL_N_PLATFORM_CHANS );
-    return RL_MASK_MU_CHAN0_IRQ >> channel;
+    return ( kMU_Rx0FullFlag >> channel );
+}
+
+static inline uint32_t getTxChanMask(uint32_t channel)
+{
+    RL_ASSERT( channel < RL_N_PLATFORM_CHANS );
+    return ( kMU_Tx0EmptyFlag >> channel );
 }
 
 static int32_t disable_counter = 0;
@@ -66,14 +73,24 @@ void rp_platform_notify(void *env, uint32_t vector_id)
 int32_t MU_M7_IRQHandler(void)
 {
     uint32_t vector;
+    MU_Type *base = MUB;
     for( uint32_t channel=0; channel<RL_N_PLATFORM_CHANS; ++channel )
     {
-        if ( (getChanMask(channel) & MU_GetStatusFlags(MUB)) != 0UL )
+        // Rx for this channel
+        uint32_t mask = getRxChanMask(channel);
+        if ( (mask & MU_GetStatusFlags(base)) != 0UL )
         {
-            vector = MU_ReceiveMsgNonBlocking(MUB, channel); // Read message from RX register.
+            vector = MU_ReceiveMsgNonBlocking(base, channel); // Read message from RX register.
             env_isr( env_get_env(channel), vector >> 16);
+            MU_ClearStatusFlags(base, mask);
         }
 
+        // Tx for this channel
+        mask = getTxChanMask(channel);
+        if ( (mask & MU_GetStatusFlags(base)) != 0 )
+        {
+            MU_ClearStatusFlags(base, mask);
+        }
     }
 
     /* ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
@@ -245,7 +262,7 @@ int32_t rp_platform_init(void *shmem_addr)
      */
     MU_Init(MUB);
     NVIC_SetPriority(MU_M7_IRQn, APP_MU_IRQ_PRIORITY);
-    NVIC_EnableIRQ(MU_M7_IRQn);
+    // NVIC_EnableIRQ(MU_M7_IRQn);
 
     /* Create lock used in multi-instanced RPMsg */
     if (0 != env_create_mutex(&rp_platform_lock, 1))
