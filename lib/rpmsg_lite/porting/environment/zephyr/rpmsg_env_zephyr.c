@@ -165,13 +165,13 @@ int32_t env_init(void **env_context, void *env_init_data)
 
     // Directly populate the M7 core vector table with the handler address, same as the freertos port
     IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
-    // irq_enable(MU_M7_IRQn);
 
     environments[phy_channel].initialized = true;
     *env_context = &( environments[phy_channel] );
     k_sem_give(&env_sema);
 
     k_sched_unlock();
+    irq_enable(MU_M7_IRQn);
 exit:
     return retval;
 }
@@ -278,13 +278,15 @@ bool env_is_initialized( void *shmem_base )
 
 void env_enable_interrupt(void *env, uint32_t vector_id)
 {
-    (void)rp_platform_interrupt_enable(vector_id);
+    struct env_context *context = get_context(env);
+    (void)rp_platform_interrupt_enable( context->phy_channel );
 }
 
 
 void env_disable_interrupt(void * env, uint32_t vector_id)
 {
-    (void)rp_platform_interrupt_disable(vector_id);
+    struct env_context *context = get_context(env);
+    (void)rp_platform_interrupt_disable( context->phy_channel );
 }
 
 

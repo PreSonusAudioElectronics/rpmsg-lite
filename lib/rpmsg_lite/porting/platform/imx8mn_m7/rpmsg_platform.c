@@ -13,6 +13,7 @@
 #include "rpmsg_env.h"
 #include "rsc_table.h"
 #include "rpmsg_config.h"
+#include "rpmsg_trace.h"
 
 #include "fsl_device_registers.h"
 #include "fsl_mu.h"
@@ -153,7 +154,7 @@ int32_t rp_platform_in_isr(void)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t rp_platform_interrupt_enable(uint32_t vector_id)
+int32_t rp_platform_interrupt_enable(uint32_t channel)
 {
     RL_ASSERT(0 < disable_counter);
 
@@ -162,10 +163,12 @@ int32_t rp_platform_interrupt_enable(uint32_t vector_id)
 
     if (disable_counter == 0)
     {
-        NVIC_EnableIRQ(MU_M7_IRQn);
+        RLTRACEF("enable MU Ch %d RX Irq\n", channel);
+        uint32_t mask = ( kMU_Rx0FullInterruptEnable >> channel );
+        MU_EnableInterrupts(MUB, mask );
     }
     rp_platform_global_isr_enable();
-    return ((int32_t)vector_id);
+    return ((int32_t)channel);
 }
 
 /**
@@ -178,7 +181,7 @@ int32_t rp_platform_interrupt_enable(uint32_t vector_id)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t rp_platform_interrupt_disable(uint32_t vector_id)
+int32_t rp_platform_interrupt_disable(uint32_t channel)
 {
     RL_ASSERT(0 <= disable_counter);
 
@@ -187,11 +190,60 @@ int32_t rp_platform_interrupt_disable(uint32_t vector_id)
        if counter is set - the interrupts are disabled */
     if (disable_counter == 0)
     {
-        NVIC_DisableIRQ(MU_M7_IRQn);
+        RLTRACEF("disable MU Ch %d RX Irq\n", channel);
+        MU_DisableInterrupts( MUB, ( kMU_Rx0FullInterruptEnable >> channel ) );      
     }
     disable_counter++;
     rp_platform_global_isr_enable();
-    return ((int32_t)vector_id);
+    return ((int32_t)channel);
+}
+
+/**
+ * rp_platform_init
+ *
+ * platform/environment init
+ */
+int32_t rp_platform_init(void *shmem_addr)
+{
+    
+    copyResourceTable(shmem_addr);
+
+    static uint32_t const allIrqEnableMask = (
+    kMU_Tx0EmptyInterruptEnable | kMU_Tx1EmptyInterruptEnable | kMU_Tx2EmptyInterruptEnable | kMU_Tx3EmptyInterruptEnable |
+    kMU_Rx0FullInterruptEnable | kMU_Rx1FullInterruptEnable | kMU_Rx2FullInterruptEnable | kMU_Rx3FullInterruptEnable |
+    kMU_GenInt0InterruptEnable | kMU_GenInt1InterruptEnable | kMU_GenInt2InterruptEnable | kMU_GenInt3InterruptEnable);
+
+    static uint32_t const allIrqFlagsMask = (
+    kMU_Tx0EmptyFlag | kMU_Tx1EmptyFlag | kMU_Tx2EmptyFlag | kMU_Tx3EmptyFlag |
+    kMU_Rx0FullFlag | kMU_Rx1FullFlag | kMU_Rx2FullFlag | kMU_Rx3FullFlag |
+    kMU_GenInt0Flag | kMU_GenInt1Flag | kMU_GenInt2Flag | kMU_GenInt3Flag |
+    kMU_EventPendingFlag | kMU_FlagsUpdatingFlag);
+
+    /*
+     * Prepare for the MU Interrupt
+     *  MU must be initialized before rpmsg init is called
+     */
+    MU_Init(MUB);
+    NVIC_SetPriority(MU_M7_IRQn, APP_MU_IRQ_PRIORITY);
+
+    /*
+     * Disable all MU interrupts
+     * These will be enabled individually as needed
+     */
+    MU_DisableInterrupts(MUB, allIrqEnableMask);
+
+    /*
+     * Clear any pending MU interrupts
+     */
+    MUB->SR |= allIrqFlagsMask;
+
+    /* Create lock used in multi-instanced RPMsg */
+    if (0 != env_create_mutex(&rp_platform_lock, 1))
+    {
+        return -1;
+    }
+
+    return 0;
 }
 
 /**
@@ -244,54 +296,6 @@ uint32_t rp_platform_vatopa(void *addr)
 void *rp_platform_patova(uint32_t addr)
 {
     return ((void *)(char *)addr);
-}
-
-/**
- * rp_platform_init
- *
- * platform/environment init
- */
-int32_t rp_platform_init(void *shmem_addr)
-{
-    
-    copyResourceTable(shmem_addr);
-
-    static uint32_t const allIrqEnableMask = (
-    kMU_Tx0EmptyInterruptEnable | kMU_Tx1EmptyInterruptEnable | kMU_Tx2EmptyInterruptEnable | kMU_Tx3EmptyInterruptEnable |
-    kMU_Rx0FullInterruptEnable | kMU_Rx1FullInterruptEnable | kMU_Rx2FullInterruptEnable | kMU_Rx3FullInterruptEnable |
-    kMU_GenInt0InterruptEnable | kMU_GenInt1InterruptEnable | kMU_GenInt2InterruptEnable | kMU_GenInt3InterruptEnable);
-
-    static uint32_t const allIrqFlagsMask = (
-    kMU_Tx0EmptyFlag | kMU_Tx1EmptyFlag | kMU_Tx2EmptyFlag | kMU_Tx3EmptyFlag |
-    kMU_Rx0FullFlag | kMU_Rx1FullFlag | kMU_Rx2FullFlag | kMU_Rx3FullFlag |
-    kMU_GenInt0Flag | kMU_GenInt1Flag | kMU_GenInt2Flag | kMU_GenInt3Flag |
-    kMU_EventPendingFlag | kMU_FlagsUpdatingFlag);
-
-    /*
-     * Prepare for the MU Interrupt
-     *  MU must be initialized before rpmsg init is called
-     */
-    MU_Init(MUB);
-    NVIC_SetPriority(MU_M7_IRQn, APP_MU_IRQ_PRIORITY);
-
-    /*
-     * Disable all MU interrupts
-     * These will be enabled individually as needed
-     */
-    MU_DisableInterrupts(MUB, allIrqEnableMask);
-
-    /*
-     * Clear any pending MU interrupts
-     */
-    MUB->SR |= allIrqEnableMask;
-
-    /* Create lock used in multi-instanced RPMsg */
-    if (0 != env_create_mutex(&rp_platform_lock, 1))
-    {
-        return -1;
-    }
-
-    return 0;
 }
 
 /**

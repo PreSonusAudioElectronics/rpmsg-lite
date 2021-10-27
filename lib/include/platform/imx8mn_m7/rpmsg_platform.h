@@ -55,8 +55,8 @@
 /* platform interrupt related functions */
 int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data);
 int32_t rp_platform_deinit_interrupt(uint32_t vector_id);
-int32_t rp_platform_interrupt_enable(uint32_t vector_id);
-int32_t rp_platform_interrupt_disable(uint32_t vector_id);
+int32_t rp_platform_interrupt_enable(uint32_t channel);
+int32_t rp_platform_interrupt_disable(uint32_t channel);
 int32_t rp_platform_in_isr(void);
 
 void rp_platform_notify(void *env, uint32_t vector_id);
