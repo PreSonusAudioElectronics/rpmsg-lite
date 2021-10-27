@@ -203,21 +203,28 @@ int32_t rp_platform_interrupt_disable(uint32_t channel)
  *
  * platform/environment init
  */
-int32_t rp_platform_init(void *shmem_addr)
+int32_t rp_platform_init(void *shmem_addr, uint32_t phy_channel)
 {
-    
+    if( phy_channel >= MU_TR_COUNT )
+    {
+        return -1;
+    }
+
     copyResourceTable(shmem_addr);
 
-    static uint32_t const allIrqEnableMask = (
-    kMU_Tx0EmptyInterruptEnable | kMU_Tx1EmptyInterruptEnable | kMU_Tx2EmptyInterruptEnable | kMU_Tx3EmptyInterruptEnable |
-    kMU_Rx0FullInterruptEnable | kMU_Rx1FullInterruptEnable | kMU_Rx2FullInterruptEnable | kMU_Rx3FullInterruptEnable |
-    kMU_GenInt0InterruptEnable | kMU_GenInt1InterruptEnable | kMU_GenInt2InterruptEnable | kMU_GenInt3InterruptEnable);
+    static uint32_t const irqEnableMasks[] = {
+        ( kMU_Tx0EmptyInterruptEnable | kMU_Rx0FullInterruptEnable | kMU_GenInt0InterruptEnable ),
+        ( kMU_Tx1EmptyInterruptEnable | kMU_Rx1FullInterruptEnable | kMU_GenInt1InterruptEnable ),
+        ( kMU_Tx2EmptyInterruptEnable | kMU_Rx2FullInterruptEnable | kMU_GenInt2InterruptEnable ),
+        ( kMU_Tx3EmptyInterruptEnable | kMU_Rx3FullInterruptEnable | kMU_GenInt3InterruptEnable )
+    };
 
-    static uint32_t const allIrqFlagsMask = (
-    kMU_Tx0EmptyFlag | kMU_Tx1EmptyFlag | kMU_Tx2EmptyFlag | kMU_Tx3EmptyFlag |
-    kMU_Rx0FullFlag | kMU_Rx1FullFlag | kMU_Rx2FullFlag | kMU_Rx3FullFlag |
-    kMU_GenInt0Flag | kMU_GenInt1Flag | kMU_GenInt2Flag | kMU_GenInt3Flag |
-    kMU_EventPendingFlag | kMU_FlagsUpdatingFlag);
+    static uint32_t const irqFlagMasks[] = {
+        ( kMU_Tx0EmptyFlag | kMU_Rx0FullFlag | kMU_GenInt0Flag ),
+        ( kMU_Tx1EmptyFlag | kMU_Rx1FullFlag | kMU_GenInt1Flag ),
+        ( kMU_Tx2EmptyFlag | kMU_Rx2FullFlag | kMU_GenInt2Flag ),
+        ( kMU_Tx3EmptyFlag | kMU_Rx3FullFlag | kMU_GenInt3Flag )
+    };
 
     /*
      * Prepare for the MU Interrupt
@@ -230,12 +237,12 @@ int32_t rp_platform_init(void *shmem_addr)
      * Disable all MU interrupts
      * These will be enabled individually as needed
      */
-    MU_DisableInterrupts(MUB, allIrqEnableMask);
+    MU_DisableInterrupts( MUB, irqEnableMasks[phy_channel] );
 
     /*
      * Clear any pending MU interrupts
      */
-    MUB->SR |= allIrqFlagsMask;
+    MUB->SR |= irqFlagMasks[phy_channel];
 
     /* Create lock used in multi-instanced RPMsg */
     if (0 != env_create_mutex(&rp_platform_lock, 1))

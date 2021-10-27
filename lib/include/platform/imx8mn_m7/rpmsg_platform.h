@@ -72,7 +72,7 @@ uint32_t rp_platform_vatopa(void *addr);
 void *rp_platform_patova(uint32_t addr);
 
 /* platform init/deinit */
-int32_t rp_platform_init(void *shmem_addr);
+int32_t rp_platform_init(void *shmem_addr, uint32_t phy_channel);
 int32_t rp_platform_deinit(void *shmem_addr);
 
 #endif /* RPMSG_PLATFORM_H_ */

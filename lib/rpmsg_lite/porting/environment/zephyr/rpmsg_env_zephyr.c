@@ -161,7 +161,7 @@ int32_t env_init(void **env_context, void *env_init_data)
     /* first call */
     k_sem_init(&env_sema, 0, 1);
 
-    retval = rp_platform_init( init_data->shmem_addr );
+    retval = rp_platform_init( init_data->shmem_addr, phy_channel );
 
     // Directly populate the M7 core vector table with the handler address, same as the freertos port
     IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
