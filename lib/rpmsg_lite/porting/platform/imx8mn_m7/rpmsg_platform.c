@@ -106,13 +106,6 @@ int32_t MU_M7_IRQHandler(void)
     return 0;
 }
 
-/**
- * rp_platform_time_delay
- *
- * @param num_msec Delay time in ms.
- *
- * This is not an accurate delay, it ensures at least num_msec passed when return.
- */
 void rp_platform_time_delay(uint32_t num_msec)
 {
     uint32_t loop;
@@ -131,29 +124,11 @@ void rp_platform_time_delay(uint32_t num_msec)
     }
 }
 
-/**
- * rp_platform_in_isr
- *
- * Return whether CPU is processing IRQ
- *
- * @return True for IRQ, false otherwise.
- *
- */
 int32_t rp_platform_in_isr(void)
 {
     return (((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0UL) ? 1 : 0);
 }
 
-/**
- * rp_platform_interrupt_enable
- *
- * Enable peripheral-related interrupt
- *
- * @param vector_id Virtual vector ID that needs to be converted to IRQ number
- *
- * @return vector_id Return value is never checked.
- *
- */
 int32_t rp_platform_interrupt_enable(uint32_t channel)
 {
     RL_ASSERT(0 < disable_counter);
@@ -171,16 +146,6 @@ int32_t rp_platform_interrupt_enable(uint32_t channel)
     return ((int32_t)channel);
 }
 
-/**
- * rp_platform_interrupt_disable
- *
- * Disable peripheral-related interrupt.
- *
- * @param vector_id Virtual vector ID that needs to be converted to IRQ number
- *
- * @return vector_id Return value is never checked.
- *
- */
 int32_t rp_platform_interrupt_disable(uint32_t channel)
 {
     RL_ASSERT(0 <= disable_counter);
@@ -198,11 +163,7 @@ int32_t rp_platform_interrupt_disable(uint32_t channel)
     return ((int32_t)channel);
 }
 
-/**
- * rp_platform_init
- *
- * platform/environment init
- */
+
 int32_t rp_platform_init(void *shmem_addr, uint32_t phy_channel)
 {
     if( phy_channel >= MU_TR_COUNT )
@@ -253,63 +214,28 @@ int32_t rp_platform_init(void *shmem_addr, uint32_t phy_channel)
     return 0;
 }
 
-/**
- * rp_platform_map_mem_region
- *
- * Dummy implementation
- *
- */
 void rp_platform_map_mem_region(uintptr_t *vrt_addr, uintptr_t phy_addr, uint32_t size, uint32_t flags)
 {
 }
 
-/**
- * rp_platform_cache_all_flush_invalidate
- *
- * Dummy implementation
- *
- */
 void rp_platform_cache_all_flush_invalidate(void)
 {
 }
 
-/**
- * rp_platform_cache_disable
- *
- * Dummy implementation
- *
- */
 void rp_platform_cache_disable(void)
 {
 }
 
-/**
- * rp_platform_vatopa
- *
- * Dummy implementation
- *
- */
 uint32_t rp_platform_vatopa(void *addr)
 {
     return ((uint32_t)(char *)addr);
 }
 
-/**
- * rp_platform_patova
- *
- * Dummy implementation
- *
- */
 void *rp_platform_patova(uint32_t addr)
 {
     return ((void *)(char *)addr);
 }
 
-/**
- * rp_platform_deinit
- *
- * platform/environment deinit process
- */
 int32_t rp_platform_deinit(void *shared_mem_addr)
 {
     /* Delete lock used in multi-instanced RPMsg */
