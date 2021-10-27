@@ -32,6 +32,7 @@
 
 #include "rpmsg_lite.h"
 #include "rpmsg_platform.h"
+#include "rpmsg_trace.h"
 
 /* rpmsg_std_hdr contains a reserved field,
  * this implementation of RPMSG uses this reserved
@@ -415,7 +416,7 @@ static void virtqueue_notify(struct virtqueue *vq)
 {
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
     struct rpmsg_lite_instance *inst = vq->priv;
-    rp_platform_notify(inst->env ? env_get_rp_platform_context(inst->env) : RL_NULL, vq->vq_queue_index);
+    rp_platform_notify(inst->env ? env_get_platform_context(inst->env) : RL_NULL, vq->vq_queue_index);
 #else
     rp_platform_notify(vq->vq_queue_index);
 #endif
@@ -908,7 +909,7 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
         return RL_NULL;
     }
 
-    if (link_id > RL_rp_platform_HIGHEST_LINK_ID)
+    if (link_id > RL_PLATFORM_HIGHEST_LINK_ID)
     {
         return RL_NULL;
     }
@@ -936,7 +937,7 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
     status = env_init(&rpmsg_lite_dev->env, env_cfg);
 #else
-    status = env_init(shmem_addr);
+    status = env_init(&shmem_addr);
 #endif
     if (status != RL_SUCCESS)
     {
@@ -1108,7 +1109,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
     uint32_t idx;
     struct rpmsg_lite_instance *rpmsg_lite_dev = RL_NULL;
 
-    if (link_id > RL_rp_platform_HIGHEST_LINK_ID)
+    if (link_id > RL_PLATFORM_HIGHEST_LINK_ID)
     {
         return RL_NULL;
     }
@@ -1136,7 +1137,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
     status = env_init(&rpmsg_lite_dev->env, env_cfg);
 #else
-    status = env_init(shmem_addr);
+    status = env_init(&shmem_addr);
 #endif
 
     if (status != RL_SUCCESS)
@@ -1179,6 +1180,7 @@ struct rpmsg_lite_instance *rpmsg_lite_remote_init(void *shmem_addr, uint32_t li
             return RL_NULL;
         }
 
+        RLTRACEF("vq %d created with mem at: %p\n", idx, vqs[idx]->vq_ring_mem );
         /* virtqueue has reference to the RPMsg Lite instance */
         vqs[idx]->priv = (void *)rpmsg_lite_dev;
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
