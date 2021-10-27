@@ -43,30 +43,28 @@
  *
  **************************************************************************/
 
+#include "rpmsg_lite.h"
 #include "rpmsg_env.h"
 #include "rpmsg_platform.h"
 #include "virtqueue.h"
 #include "rpmsg_compiler.h"
-#include <kernel/mutex.h>
-#include <kernel/semaphore.h>
-#include <kernel/thread.h>
+
 #include <lib/cbuf.h>
 #include <stdlib.h>
 #include <string.h>
+#include <err.h>
 #include <arch/arch_ops.h>
+
+
+#include <kernel/mutex.h>
+#include <kernel/semaphore.h>
+#include <kernel/thread.h>
 #include <dev/interrupt.h>
+#include <kernel/vm.h>
+#include <delay.h>
 
-#define APP_MU_IRQ_PRIORITY (3U)
+// #define APP_MU_IRQ_PRIORITY (3U)
 #define ENV_NULL ((void*)0)
-
-/*
-    Needed:
-        semaphore
-        mutex
-        scheduler lock/unlock
-        msg queue
-        is_in_isr() ?
-*/
 
 
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
@@ -108,6 +106,10 @@ typedef struct env_msg_queue
     uint16_t msg_size;
 } env_msg_queue_t;
 
+inline void env_flush_spin(void)
+{
+    udelay(50000);
+}
 
 static inline void env_enter_critical(void)
 {
@@ -139,17 +141,23 @@ static int32_t env_in_isr(void)
  * Initializes OS/BM environment.
  *
  */
-int32_t env_init(void *shmem_addr)
+int32_t env_init(void **shmem_addr)
 {
+    RLTRACE_ENTRY;
+    if( NULL == shmem_addr ) {
+        return RL_ERR_PARAM;
+    }
+
     int32_t retval;
-    // k_sched_lock(); /* stop scheduler */
+    /* stop scheduler */
     THREAD_LOCK(state);
     /* verify 'env_init_counter' */
     RL_ASSERT(env_init_counter >= 0);
     if (env_init_counter < 0)
     {
-        // k_sched_unlock(); /* re-enable scheduler */
+        /* re-enable scheduler */
         THREAD_UNLOCK(state);
+        RLTRACE_EXIT;
         return -1;
     }
     env_init_counter++;
@@ -158,43 +166,65 @@ int32_t env_init(void *shmem_addr)
     {
         /* first call */
         mutex_init(&env_mutex);
-        // k_sem_init(&env_sema, 0, 1);
         sem_init(&env_sema, 0);
         (void)memset(isr_table, 0, sizeof(isr_table));
-        // k_sched_unlock();
         THREAD_UNLOCK(state);
 
+        /*!
+         * Adjust shmem_addr to account for offset between Jailhouse guest
+         * "physical" address and hardware physical address
+         */
+        paddr_t targetPa = (paddr_t)*shmem_addr + RL_ENV_VIRTSTART_OFFSET_FROM_PHY;
+
+        RLTRACEF("Attempt allocating to specific phys addr %p..\n", (void*)targetPa);
+        void *sharedMem = NULL;
+        int status = vmm_alloc_physical(vmm_get_kernel_aspace(), "rpmsg shared mem",
+            RPMSG_LITE_SHAREDMEM_SIZE, &sharedMem, 12,
+            targetPa, 0, ARCH_MMU_FLAG_UNCACHED);
+        
+        if( NO_ERROR != status )
+        {
+            RLTRACEF("Failed to allocate shared mem!\n");
+            RL_ASSERT(0);
+        }
+
+        env_mb();
+
+        RLTRACEF("vmm_alloc_physical returned NO_ERROR\n");
+        RLTRACEF("Attempt to derefernce the first byte of shared mem..\n");
+        RLTRACEF("New va = %p\n", sharedMem);
+        paddr_t sharedMemPa = vaddr_to_paddr(sharedMem);
+        RLTRACEF("New pa = %p\n", (void*)sharedMemPa);
+
+        char *temp = (char*)sharedMem;
+        if( NULL == temp )
+        {
+            RL_ASSERT(0);
+        }
+
+        char tempChar = *temp;
+
+        RLTRACEF("The first byte at start of shared mem is 0x%x\n", tempChar );
+
+        // Overrite pointer with new virtual address
+        *shmem_addr = sharedMem;
         retval = rp_platform_init(shmem_addr);
-        /* Here Zephyr overrides whatever rp_platform_init() did with 
-        interrupt priorities, etc
-        */
 
-        // Directly populate the M7 core vector table with the handler address, same as the freertos port
-        // IRQ_DIRECT_CONNECT(MU_M7_IRQn, APP_MU_IRQ_PRIORITY, zephMuHandler, 0);
-        // irq_enable(MU_IRQS);
-        int status = configure_interrupt( MU_A53_IRQn, IRQ_TRIGGER_MODE_EDGE, IRQ_POLARITY_ACTIVE_HIGH);
-        RL_ASSERT( status == 0);
-        // status = register_int_handler(MU_IRQS, )
-        status = unmask_interrupt(MU_A53_IRQn);
-
-        // k_sem_give(&env_sema);
         sem_post(&env_sema, true);
-
+        RLTRACE_EXIT;
         return retval;
     }
     else
     {
-        // k_sched_unlock();
         THREAD_UNLOCK(state);
         /* Get the semaphore and then return it,
          * this allows for rp_platform_init() to block
          * if needed and other tasks to wait for the
          * blocking to be done.
          * This is in ENV layer as this is ENV specific.*/
-        // k_sem_take(&env_sema, K_FOREVER);
         sem_wait(&env_sema);
-        // k_sem_give(&env_sema);
         sem_post(&env_sema, true);
+        RLTRACE_EXIT;
         return 0;
     }
 }
@@ -208,6 +238,7 @@ int32_t env_init(void *shmem_addr)
  */
 int32_t env_deinit(void)
 {
+    RLTRACE_ENTRY;
     int32_t retval;
 
     // k_sched_lock(); /* stop scheduler */
@@ -218,6 +249,7 @@ int32_t env_deinit(void)
     {
         // k_sched_unlock(); /* re-enable scheduler */
         THREAD_UNLOCK(state);
+        RLTRACE_EXIT;
         return -1;
     }
 
@@ -234,12 +266,14 @@ int32_t env_deinit(void)
         // k_sched_unlock();
         THREAD_UNLOCK(state);
 
+        RLTRACE_EXIT;
         return retval;
     }
     else
     {
         // k_sched_unlock();
         THREAD_UNLOCK(state);
+        RLTRACE_EXIT;
         return 0;
     }
 }
@@ -251,7 +285,10 @@ int32_t env_deinit(void)
  */
 void *env_allocate_memory(uint32_t size)
 {
-    return (malloc(size));
+    // RLTRACE_ENTRY;
+    void *retval = malloc(size);
+    // RLTRACE_EXIT;
+    return retval;
 }
 
 /*!
@@ -261,10 +298,12 @@ void *env_allocate_memory(uint32_t size)
  */
 void env_free_memory(void *ptr)
 {
+    RLTRACEF("enter with ptr: %p\n", ptr);
     if (ptr != ((void *)0))
     {
         free(ptr);
     }
+    RLTRACE_EXIT;
 }
 
 /*!
@@ -277,7 +316,16 @@ void env_free_memory(void *ptr)
  */
 void env_memset(void *ptr, int32_t value, uint32_t size)
 {
-    (void)memset(ptr, value, size);
+    // RLTRACE_ENTRY;
+    // RLTRACEF("ptr: %p, value: %d, size: %d\n", ptr, value, size);
+    // env_flush_spin;
+
+    void *ret = memset(ptr, value, size);
+    if( ret != ptr )
+    {
+        RLTRACEF("Fail!  memset returned: %p\n", ret );
+    }
+    // RLTRACE_EXIT;
 }
 
 /*!
@@ -386,22 +434,6 @@ void *env_map_patova(uintptr_t address)
  */
 int32_t env_create_mutex(void **lock, int32_t count)
 {
-    // struct k_sem *semaphore_ptr;
-
-    // semaphore_ptr = (struct k_sem *)env_allocate_memory(sizeof(struct k_sem));
-    // if (semaphore_ptr == ((void *)0))
-    // {
-    //     return -1;
-    // }
-
-    // if (count > RL_ENV_MAX_MUTEX_COUNT)
-    // {
-    //     return -1;
-    // }
-
-    // k_sem_init(semaphore_ptr, count, RL_ENV_MAX_MUTEX_COUNT);
-    // *lock = (void *)semaphore_ptr;
-    // return 0;
     if( lock == ENV_NULL )
     {
         return -1;
@@ -430,9 +462,10 @@ int32_t env_create_mutex(void **lock, int32_t count)
  */
 void env_delete_mutex(void *lock)
 {
-    // k_sem_reset(lock);
+    RLTRACE_ENTRY;
     sem_destroy( (semaphore_t*)lock );
     env_free_memory(lock);
+    RLTRACE_EXIT;
 }
 
 /*!
@@ -542,11 +575,13 @@ void env_yield(void)
  */
 void env_register_isr(uint16_t vector_id, void *data)
 {
+    RLTRACE_ENTRY;
     RL_ASSERT(vector_id < ISR_COUNT);
     if (vector_id < ISR_COUNT)
     {
         isr_table[vector_id].data = data;
     }
+    RLTRACE_EXIT;
 }
 
 /*!
@@ -597,12 +632,12 @@ void env_disable_interrupt(uint32_t vector_id)
  * Enables memory mapping for given memory region.
  *
  * @param pa   - physical address of memory
- * @param va   - logical address of memory
+ * @param va   - logical address of memory (will be written by this function)
  * @param size - memory size
  * param flags - flags for cache/uncached  and access type
  */
 
-void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
+void env_map_memory(uintptr_t pa, uintptr_t *va, uint32_t size, uint32_t flags)
 {
     rp_platform_map_mem_region(va, pa, size, flags);
 }
@@ -657,7 +692,7 @@ int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
         goto cleanup;
     }
 
-    cbuf = env_allocate_memory(sizeof(cbuf));
+    cbuf = env_allocate_memory(sizeof(cbuf_t));
     if( cbuf == ENV_NULL )
     {
         goto cleanup;

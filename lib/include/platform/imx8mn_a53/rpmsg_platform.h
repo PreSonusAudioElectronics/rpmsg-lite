@@ -5,10 +5,6 @@
 #include <arch/arch_ops.h>
 #include <MIMX8MN6_ca53.h>
 
-/* RPMSG MU channel index */
-// TODO: fixme
-#define RPMSG_MU_CHANNEL (1)
-
 /*
  * Linux requires the ALIGN to 0x1000(4KB) instead of 0x80
  */
@@ -28,16 +24,12 @@
 #define RL_GET_LINK_ID(id)              (((id)&0xFFFFFFFEU) >> 1U)
 #define RL_GET_Q_ID(id)                 ((id)&0x1U)
 
-#define RL_rp_platform_HIGHEST_LINK_ID        (15U)
-
-#ifndef VDEV0_VRING_BASE
-#define VDEV0_VRING_BASE	  (0xB8000000U)
-#endif
+#define RL_PLATFORM_HIGHEST_LINK_ID        (15U)
 
 #define RESOURCE_TABLE_OFFSET (0xFF000)
 
-// TODO: fix me
-#define RPMSG_LITE_SHMEM_BASE		 (VDEV0_VRING_BASE)
+#define MU_IRQ_VECTOR (MU_A53_IRQn)
+
 
 /* platform interrupt related functions */
 int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data);
@@ -51,14 +43,14 @@ void rp_platform_notify(uint32_t vector_id);
 void rp_platform_time_delay(uint32_t num_msec);
 
 /* platform memory functions */
-void rp_platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags);
+void rp_platform_map_mem_region(uintptr_t *vrt_addr, uintptr_t phy_addr, uint32_t size, uint32_t flags);
 void rp_platform_cache_all_flush_invalidate(void);
 void rp_platform_cache_disable(void);
 uintptr_t rp_platform_vatopa(void *addr);
 void *rp_platform_patova(uintptr_t addr);
 
 /* platform init/deinit */
-int32_t rp_platform_init(void *shmem_addr);
+int32_t rp_platform_init(void **shmem_addr);
 int32_t rp_platform_deinit(void);
 
 static inline void rp_platform_global_isr_disable(void)
