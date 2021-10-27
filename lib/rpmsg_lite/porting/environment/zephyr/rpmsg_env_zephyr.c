@@ -699,8 +699,8 @@ void env_yield(void)
 
 void *env_get_platform_context(void *env_context)
 {
-    // Don't call me
-    RL_ASSERT(0);
+    // We've just stored the env context pointer so return it directly
+    return env_context;
 }
 
 

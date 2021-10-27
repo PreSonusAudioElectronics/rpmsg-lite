@@ -256,13 +256,34 @@ int32_t rp_platform_init(void *shmem_addr)
     
     copyResourceTable(shmem_addr);
 
+    static uint32_t const allIrqEnableMask = (
+    kMU_Tx0EmptyInterruptEnable | kMU_Tx1EmptyInterruptEnable | kMU_Tx2EmptyInterruptEnable | kMU_Tx3EmptyInterruptEnable |
+    kMU_Rx0FullInterruptEnable | kMU_Rx1FullInterruptEnable | kMU_Rx2FullInterruptEnable | kMU_Rx3FullInterruptEnable |
+    kMU_GenInt0InterruptEnable | kMU_GenInt1InterruptEnable | kMU_GenInt2InterruptEnable | kMU_GenInt3InterruptEnable);
+
+    static uint32_t const allIrqFlagsMask = (
+    kMU_Tx0EmptyFlag | kMU_Tx1EmptyFlag | kMU_Tx2EmptyFlag | kMU_Tx3EmptyFlag |
+    kMU_Rx0FullFlag | kMU_Rx1FullFlag | kMU_Rx2FullFlag | kMU_Rx3FullFlag |
+    kMU_GenInt0Flag | kMU_GenInt1Flag | kMU_GenInt2Flag | kMU_GenInt3Flag |
+    kMU_EventPendingFlag | kMU_FlagsUpdatingFlag);
+
     /*
      * Prepare for the MU Interrupt
      *  MU must be initialized before rpmsg init is called
      */
     MU_Init(MUB);
     NVIC_SetPriority(MU_M7_IRQn, APP_MU_IRQ_PRIORITY);
-    // NVIC_EnableIRQ(MU_M7_IRQn);
+
+    /*
+     * Disable all MU interrupts
+     * These will be enabled individually as needed
+     */
+    MU_DisableInterrupts(MUB, allIrqEnableMask);
+
+    /*
+     * Clear any pending MU interrupts
+     */
+    MUB->SR |= allIrqEnableMask;
 
     /* Create lock used in multi-instanced RPMsg */
     if (0 != env_create_mutex(&rp_platform_lock, 1))
