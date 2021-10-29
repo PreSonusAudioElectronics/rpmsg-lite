@@ -28,8 +28,6 @@
 
 #define RESOURCE_TABLE_OFFSET (0xFF000)
 
-#define MU_IRQ_VECTOR (MU_A53_IRQn)
-
 
 /* platform interrupt related functions */
 int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data);

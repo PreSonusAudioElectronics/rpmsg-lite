@@ -7,6 +7,7 @@
 #include "rpmsg_lite.h"
 #include "rpmsg_env.h"
 #include "rsc_table.h"
+#include "rpmsg_trace.h"
 
 // LK
 #include <arch/arch_ops.h>
@@ -41,12 +42,12 @@ int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
 
     if( isr_counter == 0 )
     {
-        int status = class_msgunit_register_tx_callback(gDev, RPMSG_MU_CHANNEL, on_tx);
+        int status = class_msgunit_register_tx_callback(gDev, on_tx);
         if( NO_ERROR != status ) {
             RL_ASSERT(0);
         }
 
-        status = class_msgunit_register_rx_callback(gDev, RPMSG_MU_CHANNEL, on_rx);
+        status = class_msgunit_register_rx_callback(gDev, on_rx);
         if( NO_ERROR != status ) {
             RL_ASSERT(0);
         }
@@ -91,13 +92,13 @@ void rp_platform_notify(uint32_t vector_id)
     RLTRACE_ENTRY;
     uint32_t msg = (uint32_t)(vector_id << 16);
 
-    msg = 0xaaaa;
+    msg = 0xaa3b;
 
     env_lock_mutex(rp_platform_lock);
-    // TODO: use driver for this
-    // MU_SendMsg(gMuRegisters, RPMSG_MU_CHANNEL, msg);
-    if( gDev ) {
-        int status = class_msgunit_send_msg(gDev, RPMSG_MU_CHANNEL, msg);
+
+    if( gDev ) 
+    {
+        int status = class_msgunit_send_msg(gDev, msg);
         RL_ASSERT( RL_SUCCESS == status );
     }
     else {
@@ -111,11 +112,13 @@ void rp_platform_notify(uint32_t vector_id)
 
 static void on_rx(uint32_t msg)
 {
-    RLTRACE_ENTRY;
+    env_mb();
+    RLTRACEF("msg: 0x%x\n", msg);
 }
 
 static void on_tx(void)
 {
+    env_mb();
     RLTRACE_ENTRY;
 }
 
@@ -164,47 +167,39 @@ int32_t rp_platform_interrupt_enable(uint32_t vector_id)
     rp_platform_global_isr_disable();
     disable_counter--;
 
-    int status;
+    int status = 0;
     int32_t retval = (int32_t)vector_id;
 
     if (disable_counter == 0)
     {
-        // TODO: use driver api
-        // status = unmask_interrupt(MU_IRQ_VECTOR);
-        retval = NO_ERROR==status ? (int32_t)vector_id : RL_ERRORS_BASE;
+        status = class_msgunit_start( gDev );
+        retval = NO_ERROR==status ? (int32_t)vector_id : status;
     }
     rp_platform_global_isr_enable();
     return ( retval );
 }
 
-/**
- * rp_platform_interrupt_disable
- *
- * Disable peripheral-related interrupt.
- *
- * @param vector_id Virtual vector ID that needs to be converted to IRQ number
- *
- * @return vector_id Return value is never checked.
- *
- */
+
 int32_t rp_platform_interrupt_disable(uint32_t vector_id)
 {
-    RLTRACE_ENTRY;
+    // RLTRACEF("vector_id: %d\n", vector_id);
+    RL_ASSERT( gDev != NULL );
     RL_ASSERT(0 <= disable_counter);
 
+    env_mb();
     rp_platform_global_isr_disable();
-    /* virtqueues use the same NVIC vector
-       if counter is set - the interrupts are disabled */
-    int32_t status, retval = (int32_t)vector_id;
+
+    int32_t status = 0, retval = (int32_t)vector_id;
     if (disable_counter == 0)
     {
-        // TODO: use driver api
-        // status = mask_interrupt(MU_IRQ_VECTOR);
-        retval = NO_ERROR==status ? (int32_t)vector_id : RL_ERRORS_BASE;
+        status = class_msgunit_stop( gDev );
+        retval = NO_ERROR==status ? (int32_t)vector_id : status;
     }
     disable_counter++;
     rp_platform_global_isr_enable();
-    RLTRACE_EXIT;
+    env_mb();
+    RLTRACEF("returning: %d\n", retval);
+    env_flush_spin();
     return ( retval );
 }
 
@@ -290,7 +285,7 @@ int32_t rp_platform_init(void **shmem_addr)
 {
     RLTRACE_ENTRY;
 
-    RLTRACEF("Copying resource table...\n");
+    // RLTRACEF("Copying resource table...\n");
     // copyResourceTable(ptr);
 
     RLTRACEF("Initializing Messaging Unit...\n");
@@ -313,9 +308,8 @@ int32_t rp_platform_init(void **shmem_addr)
         return -1;
     }
 
-    env_flush_spin();
-
     RLTRACE_EXIT;
+    env_flush_spin();
     return 0;
 }
 

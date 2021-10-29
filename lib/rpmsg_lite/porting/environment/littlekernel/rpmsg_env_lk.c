@@ -30,24 +30,13 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**************************************************************************
- * FILE NAME
- *
- *       rpmsg_env_zephyr.c
- *
- *
- * DESCRIPTION
- *
- *       This file is Zephyr RTOS Implementation of env layer for OpenAMP.
- *
- *
- **************************************************************************/
 
 #include "rpmsg_lite.h"
 #include "rpmsg_env.h"
 #include "rpmsg_platform.h"
 #include "virtqueue.h"
 #include "rpmsg_compiler.h"
+#include "rpmsg_trace.h"
 
 #include <lib/cbuf.h>
 #include <stdlib.h>
@@ -623,7 +612,12 @@ void env_enable_interrupt(uint32_t vector_id)
 
 void env_disable_interrupt(uint32_t vector_id)
 {
-    (void)rp_platform_interrupt_disable(vector_id);
+    TRACEF("vector_id: %d\n", vector_id);
+    int status = rp_platform_interrupt_disable(vector_id);
+    if( vector_id != (uint32_t)status )
+    {
+        RL_ASSERT_MSG("rp_platform_interrupt_disable failed!\n", 0 );
+    }
 }
 
 /*!
