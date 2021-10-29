@@ -92,8 +92,6 @@ void rp_platform_notify(uint32_t vector_id)
     RLTRACE_ENTRY;
     uint32_t msg = (uint32_t)(vector_id << 16);
 
-    msg = 0xaa3b;
-
     env_lock_mutex(rp_platform_lock);
 
     if( gDev ) 
