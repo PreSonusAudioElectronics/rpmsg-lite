@@ -99,7 +99,8 @@ void rp_platform_notify(uint32_t vector_id)
         int status = class_msgunit_send_msg(gDev, msg);
         RL_ASSERT( RL_SUCCESS == status );
     }
-    else {
+    else 
+    {
         RLTRACEF("We have no device configured!\n");
     }
 

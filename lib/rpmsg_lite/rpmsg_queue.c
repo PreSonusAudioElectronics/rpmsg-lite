@@ -31,6 +31,7 @@
  */
 #include "rpmsg_lite.h"
 #include "rpmsg_queue.h"
+#include "rpmsg_trace.h"
 
 typedef struct
 {
@@ -41,6 +42,8 @@ typedef struct
 
 int32_t rpmsg_queue_rx_cb(void *payload, uint32_t payload_len, uint32_t src, void *priv)
 {
+    RLTRACEF("payload: %p, payload_len: %d, src: %d, priv: %p\n", payload, payload_len, src, priv);
+
     rpmsg_queue_rx_cb_data_t msg;
 
     RL_ASSERT(priv != RL_NULL);

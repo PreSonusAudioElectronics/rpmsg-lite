@@ -681,7 +681,7 @@ int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
     char* buf = ENV_NULL;
     env_msg_queue_t* mq;
 
-    if( *queue == ENV_NULL )
+    if( queue == ENV_NULL )
     {
         goto cleanup;
     }
