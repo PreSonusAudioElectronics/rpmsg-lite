@@ -249,25 +249,22 @@ void rp_platform_cache_disable(void)
     // dummy stub
 }
 
-/**
- * rp_platform_vatopa
- *
- * Dummy implementation
- *
- */
+
 uintptr_t rp_platform_vatopa(void *addr)
 {
-    return vaddr_to_paddr( addr );
+    uintptr_t ret = ( vaddr_to_paddr( addr ) - RL_ENV_VIRTSTART_OFFSET_FROM_PHY );
+    RL_ASSERT( (int64_t)ret > 0 );
+    RLTRACEF("returning %p\n", (void*)ret );
+    return ret;
 }
 
-/**
- * rp_platform_patova
- *
- *
- */
+
 void *rp_platform_patova(uintptr_t addr)
 {
-    return paddr_to_kvaddr( addr );
+    // offset input due to being in Jailhouse guest
+    uintptr_t pa = addr + RL_ENV_VIRTSTART_OFFSET_FROM_PHY;
+    void* ret = paddr_to_kvaddr( pa );
+    return ret;
 }
 
 void testFuncPtr(void)
