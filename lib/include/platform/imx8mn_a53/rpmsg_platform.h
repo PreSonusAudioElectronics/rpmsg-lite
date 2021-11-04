@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <arch/arch_ops.h>
+#include <arch/ops.h>
 #include <MIMX8MN6_ca53.h>
 
 /*
@@ -47,9 +48,20 @@ void rp_platform_cache_disable(void);
 uintptr_t rp_platform_vatopa(void *addr);
 void *rp_platform_patova(uintptr_t addr);
 
+
 /* platform init/deinit */
 int32_t rp_platform_init(void **shmem_addr);
 int32_t rp_platform_deinit(void);
+
+static inline void rp_platform_sync_cache_range(uintptr_t start, size_t len)
+{
+    arch_sync_cache_range(start, len);
+}
+
+static inline void rp_platform_invalidate_cache_range(uintptr_t start, size_t len)
+{
+    arch_invalidate_cache_range(start, len);    
+}
 
 static inline void rp_platform_global_isr_disable(void)
 {

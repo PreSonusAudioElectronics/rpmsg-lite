@@ -26,12 +26,15 @@
 #error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
 #endif
 
+#define LOCAL_TRACE (1)
+
 static void on_rx(uint32_t msg);
 static void on_tx(void);
 
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
 static void *rp_platform_lock;
+static uintptr_t gSharedMemBaseAddr = 0;
 static struct device *gDev = NULL;
 
 int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
@@ -111,13 +114,12 @@ void rp_platform_notify(uint32_t vector_id)
 
 static void on_rx(uint32_t msg)
 {
-    env_mb();
     RLTRACEF("msg: 0x%x\n", msg);
+    env_isr(msg);
 }
 
 static void on_tx(void)
 {
-    env_mb();
     RLTRACE_ENTRY;
 }
 
@@ -185,7 +187,6 @@ int32_t rp_platform_interrupt_disable(uint32_t vector_id)
     RL_ASSERT( gDev != NULL );
     RL_ASSERT(0 <= disable_counter);
 
-    env_mb();
     rp_platform_global_isr_disable();
 
     int32_t status = 0, retval = (int32_t)vector_id;
@@ -196,7 +197,6 @@ int32_t rp_platform_interrupt_disable(uint32_t vector_id)
     }
     disable_counter++;
     rp_platform_global_isr_enable();
-    env_mb();
     RLTRACEF("returning: %d\n", retval);
     env_flush_spin();
     return ( retval );
@@ -236,6 +236,7 @@ void rp_platform_map_mem_region(uintptr_t *vrt_addr, uintptr_t phy_addr, uint32_
  */
 void rp_platform_cache_all_flush_invalidate(void)
 {
+    arch_clean_invalidate_cache_range(gSharedMemBaseAddr, RL_VRING_OVERHEAD);
 }
 
 /**
@@ -280,6 +281,8 @@ void testFuncPtr(void)
 int32_t rp_platform_init(void **shmem_addr)
 {
     RLTRACE_ENTRY;
+
+    gSharedMemBaseAddr = (uintptr_t)*shmem_addr;
 
     // RLTRACEF("Copying resource table...\n");
     // copyResourceTable(ptr);
