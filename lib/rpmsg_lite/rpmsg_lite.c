@@ -36,7 +36,7 @@
 #include "rpmsg_platform.h"
 
 #include "rpmsg_trace.h"
-#define LOCAL_TRACE (1)
+#define LOCAL_TRACE (0)
 
 /* rpmsg_std_hdr contains a reserved field,
  * this implementation of RPMSG uses this reserved
@@ -642,21 +642,14 @@ static int32_t rpmsg_lite_format_message(struct rpmsg_lite_instance *rpmsg_lite_
         return RL_NOT_READY;
     }
 
-    RLTRACEF("inputs ok\n");
-
     /* Lock the device to enable exclusive access to virtqueues */
     env_lock_mutex(rpmsg_lite_dev->lock);
     /* Get rpmsg buffer for sending message. */
     buffer = rpmsg_lite_dev->vq_ops->vq_tx_alloc(rpmsg_lite_dev->tvq, &buff_len, &idx);
     env_unlock_mutex(rpmsg_lite_dev->lock);
 
-    RLTRACEF("buffer: %p\n", buffer);
-    env_flush_spin();
-
     if ((buffer == RL_NULL) && (timeout == RL_FALSE))
     {
-        RLTRACEF("first allocation attempt failed\n");
-        env_flush_spin();
         return RL_ERR_NO_MEM;
     }
 
@@ -677,46 +670,18 @@ static int32_t rpmsg_lite_format_message(struct rpmsg_lite_instance *rpmsg_lite_
     rpmsg_msg = (struct rpmsg_std_msg *)buffer;
 
     /* Initialize RPMSG header. */
-    RLTRACEF("buffer pa: %p\n", (void*)env_map_vatopa(buffer) );
-    env_flush_spin();
     rpmsg_msg->hdr.dst   = dst;
-    RLTRACEF("hdr.dst: %d\n", rpmsg_msg->hdr.dst );
     rpmsg_msg->hdr.src   = src;
-    RLTRACEF("hdr.src: %d\n", rpmsg_msg->hdr.src );
     rpmsg_msg->hdr.len   = (uint16_t)size;
     rpmsg_msg->hdr.flags = (uint16_t)flags;
-
-    RLTRACEF("about to try the memcpy..\n");
-
-    env_flush_spin();
 
     /* Copy data to rpmsg buffer. */
     env_memcpy(rpmsg_msg->data, data, size);
 
-    RLTRACEF("rpmsg_msg->data contains: '%s'\n", rpmsg_msg->data );
-
     env_lock_mutex(rpmsg_lite_dev->lock);
     /* Enqueue buffer on virtqueue. */
-    void* vringSharedMem = rpmsg_lite_dev->tvq->vq_ring_mem;
-    RL_ASSERT_MSG( "vringSharedMem is NULL!\n", (vringSharedMem != NULL) );
-    void* vringPhyAddr = (void*)rp_platform_vatopa(vringSharedMem);
-    RL_ASSERT_MSG( "vringPhyAddr is NULL!\n", vringPhyAddr );
-    RLTRACEF("vringGuestPhyAddr: %p, vringRealPhyAddr: %p\n", vringSharedMem, vringPhyAddr );
-
     rpmsg_lite_dev->vq_ops->vq_tx(rpmsg_lite_dev->tvq, buffer, buff_len, idx);
     env_cache_sync_range((uintptr_t)buffer, buff_len);
-
-    RLTRACEF("put to idx: %d\n", idx);
-    struct rpmsg_std_msg* stored_pa = (struct rpmsg_std_msg*)rpmsg_lite_dev->tvq->vq_ring.desc[idx].addr;
-    RLTRACEF("Address stored in vring: %p\n", stored_pa );
-    RLTRACEF("size of rpmsg_msg hdr: %lu\n", sizeof(struct rpmsg_std_hdr));
-    struct rpmsg_std_msg* stored_va = (struct rpmsg_std_msg*)env_map_patova((uintptr_t)stored_pa);
-    RLTRACEF("contents of msg header:\n");
-    rl_dump( &(stored_va->hdr), sizeof(struct rpmsg_std_hdr), 40 );
-    uint16_t stored_len = stored_va->hdr.len;
-    RLTRACEF("size of sent data: %d\n", stored_len);
-    RLTRACEF("contents of data packet:\n");
-    rl_dump( stored_va->data, stored_len, 40 );
 
     /* Let the other side know that there is a job to process. */
     virtqueue_kick(rpmsg_lite_dev->tvq);

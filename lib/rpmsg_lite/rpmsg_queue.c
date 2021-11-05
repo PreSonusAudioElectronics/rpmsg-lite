@@ -33,7 +33,7 @@
 #include "rpmsg_queue.h"
 
 #include "rpmsg_trace.h"
-#define LOCAL_TRACE (1)
+#define LOCAL_TRACE (0)
 
 typedef struct
 {

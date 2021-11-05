@@ -258,7 +258,6 @@ void *virtqueue_get_buffer(struct virtqueue *vq, uint32_t *len, uint16_t *idx)
     if ((vq == VQ_NULL) )
     {
         RLTRACEF("vq is NULL\n");
-        env_flush_spin();
         return (VQ_NULL);
     }
 
@@ -267,7 +266,6 @@ void *virtqueue_get_buffer(struct virtqueue *vq, uint32_t *len, uint16_t *idx)
         RLTRACEF("vq empty\n");
         RLTRACEF("vq_used_cons_idx: %d, vq_ring.used->idx: %d\n", 
             vq->vq_used_cons_idx, vq->vq_ring.used->idx );
-        env_flush_spin();
         return (VQ_NULL);
     }
 
@@ -297,10 +295,7 @@ void *virtqueue_get_buffer(struct virtqueue *vq, uint32_t *len, uint16_t *idx)
     return env_map_patova(vq->env, ((uintptr_t)(vq->vq_ring.desc[desc_idx].addr)));
 #else
     uint64_t pa = vq->vq_ring.desc[desc_idx].addr;
-    RLTRACEF("pa: %p\n", (void*)pa );
     void* ret = env_map_patova(pa);
-    RLTRACEF("returning: %p\n", ret);
-    env_flush_spin();
     return ret;
 #endif
 }

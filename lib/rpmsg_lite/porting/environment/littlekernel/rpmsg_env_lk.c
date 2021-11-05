@@ -55,7 +55,7 @@
 // #define APP_MU_IRQ_PRIORITY (3U)
 #define ENV_NULL ((void*)0)
 
-#define LOCAL_TRACE (1)
+#define LOCAL_TRACE (0)
 
 
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
@@ -350,10 +350,8 @@ int32_t env_create_mutex(void **lock, int32_t count)
 
 void env_delete_mutex(void *lock)
 {
-    RLTRACE_ENTRY;
     sem_destroy( (semaphore_t*)lock );
     env_free_memory(lock);
-    RLTRACE_EXIT;
 }
 
 void env_lock_mutex(void *lock)
@@ -440,7 +438,7 @@ void env_enable_interrupt(uint32_t vector_id)
 
 void env_disable_interrupt(uint32_t vector_id)
 {
-    TRACEF("vector_id: %d\n", vector_id);
+    RLTRACEF("vector_id: %d\n", vector_id);
     int status = rp_platform_interrupt_disable(vector_id);
     if( vector_id != (uint32_t)status )
     {

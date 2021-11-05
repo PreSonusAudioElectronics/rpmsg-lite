@@ -26,7 +26,7 @@
 #error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
 #endif
 
-#define LOCAL_TRACE (1)
+#define LOCAL_TRACE (0)
 
 static void on_rx(uint32_t msg);
 static void on_tx(void);
@@ -57,9 +57,6 @@ int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
     }
     
     isr_counter++;
-    RLTRACEF("Registered isr num: %d\n", isr_counter );
-
-    env_flush_spin();
 
     env_unlock_mutex(rp_platform_lock);
 
@@ -114,13 +111,11 @@ void rp_platform_notify(uint32_t vector_id)
 
 static void on_rx(uint32_t msg)
 {
-    RLTRACEF("msg: 0x%x\n", msg);
     env_isr(msg);
 }
 
 static void on_tx(void)
 {
-    RLTRACE_ENTRY;
 }
 
 
@@ -183,7 +178,6 @@ int32_t rp_platform_interrupt_enable(uint32_t vector_id)
 
 int32_t rp_platform_interrupt_disable(uint32_t vector_id)
 {
-    // RLTRACEF("vector_id: %d\n", vector_id);
     RL_ASSERT( gDev != NULL );
     RL_ASSERT(0 <= disable_counter);
 
@@ -197,8 +191,6 @@ int32_t rp_platform_interrupt_disable(uint32_t vector_id)
     }
     disable_counter++;
     rp_platform_global_isr_enable();
-    RLTRACEF("returning: %d\n", retval);
-    env_flush_spin();
     return ( retval );
 }
 
@@ -255,7 +247,6 @@ uintptr_t rp_platform_vatopa(void *addr)
 {
     uintptr_t ret = ( vaddr_to_paddr( addr ) - RL_ENV_VIRTSTART_OFFSET_FROM_PHY );
     RL_ASSERT( (int64_t)ret > 0 );
-    RLTRACEF("returning %p\n", (void*)ret );
     return ret;
 }
 
@@ -284,9 +275,6 @@ int32_t rp_platform_init(void **shmem_addr)
 
     gSharedMemBaseAddr = (uintptr_t)*shmem_addr;
 
-    // RLTRACEF("Copying resource table...\n");
-    // copyResourceTable(ptr);
-
     RLTRACEF("Initializing Messaging Unit...\n");
 
     gDev = class_msgunit_get_device_by_id(RL_LK_MU_BUS_ID);
@@ -297,9 +285,6 @@ int32_t rp_platform_init(void **shmem_addr)
         return -1;
     }
 
-    env_flush_spin();
-
-    RLTRACEF("Creating platform mutex...\n");
     /* Create lock used in multi-instanced RPMsg */
     if (0 != env_create_mutex(&rp_platform_lock, 1))
     {
@@ -308,7 +293,6 @@ int32_t rp_platform_init(void **shmem_addr)
     }
 
     RLTRACE_EXIT;
-    env_flush_spin();
     return 0;
 }
 
