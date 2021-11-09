@@ -79,9 +79,20 @@
 
 #include <stdio.h>
 #include <stdint.h>
+
+#if defined __cplusplus
+extern "C" {
+#endif
+
 #include "rpmsg_default_config.h"
 #include "rpmsg_platform.h"
 
+// Set 1 to enable tracing, 0 to disable
+#define RLTRACE_ON (1U)
+
+void env_flush_spin(void);
+
+#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 /*!
  * env_init
  *
@@ -92,10 +103,25 @@
  *
  * @returns - execution status
  */
-#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 int32_t env_init(void **env_context, void *env_init_data);
 #else
-int32_t env_init(void);
+/*!
+ * @brief env_init
+ *
+ * Initializes OS/BM environment
+ * Usage example:
+ * 
+ * void *shmem_ptr = SHARED_MEM_START_ADDRESS;
+ * env_init( &shmem_ptr );
+ * 
+ * ATTENTION: On some platforms, this function may modify the value of shmem_addr.
+ * The API is done this way so that platforms with an MMU can convert the physical
+ * address to a virtual one at the platform layer.
+ * 
+ * @param shmem_addr 
+ * @return int32_t 
+ */
+int32_t env_init(void **shmem_addr);
 #endif
 
 /*!
@@ -155,6 +181,7 @@ void env_memcpy(void *dst, void const *src, uint32_t len);
 int32_t env_strcmp(const char *dst, const char *src);
 void env_strncpy(char *dest, const char *src, uint32_t len);
 int32_t env_strncmp(char *dest, const char *src, uint32_t len);
+int env_strnlen(const char *str, uint32_t maxLen);
 #define env_print(...) printf(__VA_ARGS__)
 
 /*!
@@ -176,9 +203,9 @@ int32_t env_strncmp(char *dest, const char *src, uint32_t len);
  * @return  - physical address
  */
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-uint32_t env_map_vatopa(void *env, void *address);
+uintptr_t env_map_vatopa(void *env, void *address);
 #else
-uint32_t env_map_vatopa(void *address);
+uintptr_t env_map_vatopa(void *address);
 #endif
 
 /*!
@@ -193,9 +220,9 @@ uint32_t env_map_vatopa(void *address);
  *
  */
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-void *env_map_patova(void *env, uint32_t address);
+void *env_map_patova(void *env, uintptr_t address);
 #else
-void *env_map_patova(uint32_t address);
+void *env_map_patova(uintptr_t address);
 #endif
 
 /*!
@@ -356,7 +383,7 @@ void env_yield(void);
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 void env_register_isr(void *env, uint32_t vector_id, void *data);
 #else
-void env_register_isr(uint32_t vector_id, void *data);
+void env_register_isr(uint16_t vector_id, void *data);
 #endif
 
 /*!
@@ -370,7 +397,7 @@ void env_register_isr(uint32_t vector_id, void *data);
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
 void env_unregister_isr(void *env, uint32_t vector_id);
 #else
-void env_unregister_isr(uint32_t vector_id);
+void env_unregister_isr(uint16_t vector_id);
 #endif
 
 /*!
@@ -438,7 +465,7 @@ void env_disable_interrupt(uint32_t vector_id);
 #define SHARED_MEM (1 << 6)
 #define TLB_MEM    (1 << 7)
 
-void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags);
+void env_map_memory(uintptr_t pa, uintptr_t *va, uint32_t size, uint32_t flags);
 
 /*!
  * env_get_timestamp
@@ -524,6 +551,24 @@ int32_t env_get_queue(void *queue, void *msg, uint32_t timeout_ms);
 int32_t env_get_current_queue_size(void *queue);
 
 /*!
+ * \brief flush cache for a range
+ * Will compile to nothing on systems with no cache
+ * 
+ * \param addr (use virtual address on MMU systems, not physical address)
+ * \param len 
+ */
+void env_cache_sync_range(uintptr_t addr, size_t len);
+
+/*!
+ * \brief invalidate cache for a range
+ * Will compile to nothing on systems with no cache
+ * 
+ * \param addr (use virtual address on MMU systems, not physical address)
+ * \param len 
+ */
+void env_cache_invalidate_range(uintptr_t addr, size_t len);
+
+/*!
  * env_isr
  *
  * Invoke RPMSG/IRQ callback
@@ -573,6 +618,10 @@ int32_t env_init_interrupt(void *env, int32_t vq_id, void *isr_data);
  * @return        Execution status, 0 on success
  */
 int32_t env_deinit_interrupt(void *env, int32_t vq_id);
+#endif
+
+#if defined __cplusplus
+}
 #endif
 
 #endif /* RPMSG_ENV_H_ */

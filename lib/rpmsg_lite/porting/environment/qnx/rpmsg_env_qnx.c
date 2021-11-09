@@ -90,7 +90,7 @@ typedef struct env_queue
  */
 typedef struct env_context
 {
-    void *platform_context;               /* Pointer to platform context */
+    void *rp_platform_context;               /* Pointer to platform context */
     uint32_t pa;                          /* Physical address of memory pool reserved for rpmsg */
     void *va;                             /* Virtual address of the memory pool */
     struct isr_info isr_table[ISR_COUNT]; /* Table with registered Virt. queue data */
@@ -103,10 +103,10 @@ typedef struct env_context
  *
  * @return Pointer to platform context
  */
-void *env_get_platform_context(void *env_context)
+void *env_get_rp_platform_context(void *env_context)
 {
     env_context_t *env = env_context;
-    return env->platform_context;
+    return env->rp_platform_context;
 }
 
 /*!
@@ -132,7 +132,7 @@ int32_t env_init(void **env_context, void *env_init_data)
         ctx->pa = init->pa;
         ctx->va = init->va;
         /* Initialize platform, dereference user_input to get platform cfg address */
-        if (platform_init(&ctx->platform_context, ctx, user_cfg ? user_cfg->platform_cfg : ((void *)0)) != 0)
+        if (rp_platform_init(&ctx->rp_platform_context, ctx, user_cfg ? user_cfg->rp_platform_cfg : ((void *)0)) != 0)
         {
             env_free_memory(ctx);
             return -1;
@@ -153,7 +153,7 @@ int32_t env_init(void **env_context, void *env_init_data)
 int32_t env_deinit(void *env_context)
 {
     env_context_t *ctx = env_context;
-    platform_deinit(ctx->platform_context);
+    rp_platform_deinit(ctx->rp_platform_context);
     env_free_memory(ctx);
     return 0;
 }
@@ -503,7 +503,7 @@ void env_disable_interrupt(void *env, uint32_t vector_id)
  */
 void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
 {
-    platform_map_mem_region(va, pa, size, flags);
+    rp_platform_map_mem_region(va, pa, size, flags);
 }
 
 /*!
@@ -514,8 +514,8 @@ void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
  */
 void env_disable_cache(void)
 {
-    platform_cache_all_flush_invalidate();
-    platform_cache_disable();
+    rp_platform_cache_all_flush_invalidate();
+    rp_platform_cache_disable();
 }
 
 /*!

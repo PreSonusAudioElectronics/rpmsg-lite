@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+        "rpmsg_platform.h": "c",
+        "rsc_table.h": "c",
+        "remoteproc.h": "c",
+        "rpmsg_lite.h": "c",
+        "*.tcc": "cpp",
+        "fstream": "cpp",
+        "iomanip": "cpp",
+        "ostream": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp",
+        "rpmsg_env_qnx.h": "c"
+    }
+}

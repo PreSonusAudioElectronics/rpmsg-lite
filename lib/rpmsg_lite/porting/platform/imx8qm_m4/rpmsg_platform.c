@@ -61,33 +61,33 @@
  * With all the LSIO MUs, the NVIC_IRQn = 35, that corresponds to IRQSTEER_3_IRQn
  */
 
-static int32_t isr_counter0     = 0; /* RL_PLATFORM_IMX8QM_M4_A_USER_LINK_ID isr counter */
-static int32_t isr_counter1     = 0; /* RL_PLATFORM_IMX8QM_M4_M4_USER_LINK_ID isr counter */
+static int32_t isr_counter0     = 0; /* RL_rp_platform_IMX8QM_M4_A_USER_LINK_ID isr counter */
+static int32_t isr_counter1     = 0; /* RL_rp_platform_IMX8QM_M4_M4_USER_LINK_ID isr counter */
 static int32_t disable_counter0 = 0;
 static int32_t disable_counter1 = 0;
-static void *platform_lock;
+static void *rp_platform_lock;
 
-static void platform_global_isr_disable(void)
+static void rp_platform_global_isr_disable(void)
 {
     __asm volatile("cpsid i");
 }
 
-static void platform_global_isr_enable(void)
+static void rp_platform_global_isr_enable(void)
 {
     __asm volatile("cpsie i");
 }
 
-int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
+int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
     /* Register ISR to environment layer */
     env_register_isr(vector_id, isr_data);
 
     /* Prepare the MU Hardware, enable channel 1 interrupt */
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
 
     switch (RL_GET_COM_ID(vector_id))
     {
-        case RL_PLATFORM_IMX8QM_M4_A_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_A_COM_ID:
             RL_ASSERT(0 <= isr_counter0);
             if (isr_counter0 == 0)
             {
@@ -95,7 +95,7 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
             }
             isr_counter0++;
             break;
-        case RL_PLATFORM_IMX8QM_M4_M4_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_M4_COM_ID:
             RL_ASSERT(0 <= isr_counter1);
             if (isr_counter1 == 0)
             {
@@ -108,19 +108,19 @@ int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
             break;
     }
 
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 
     return 0;
 }
 
-int32_t platform_deinit_interrupt(uint32_t vector_id)
+int32_t rp_platform_deinit_interrupt(uint32_t vector_id)
 {
     /* Prepare the MU Hardware */
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
 
     switch (RL_GET_COM_ID(vector_id))
     {
-        case RL_PLATFORM_IMX8QM_M4_A_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_A_COM_ID:
             RL_ASSERT(0 < isr_counter0);
             isr_counter0--;
             if (isr_counter0 == 0)
@@ -128,7 +128,7 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
                 MU_DisableInterrupts(APP_M4_A_MU, (1UL << 27U) >> RPMSG_MU_CHANNEL);
             }
             break;
-        case RL_PLATFORM_IMX8QM_M4_M4_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_M4_COM_ID:
             RL_ASSERT(0 < isr_counter1);
             isr_counter1--;
             if (isr_counter1 == 0)
@@ -144,31 +144,31 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
     /* Unregister ISR from environment layer */
     env_unregister_isr(vector_id);
 
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 
     return 0;
 }
 
-void platform_notify(uint32_t vector_id)
+void rp_platform_notify(uint32_t vector_id)
 {
     /* Only vring id and queue id is needed in msg */
     uint32_t msg = RL_GEN_MU_MSG(vector_id);
 
-    env_lock_mutex(platform_lock);
+    env_lock_mutex(rp_platform_lock);
     /* As Linux suggests, use MU->Data Channel 1 as communication channel */
     switch (RL_GET_COM_ID(vector_id))
     {
-        case RL_PLATFORM_IMX8QM_M4_A_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_A_COM_ID:
             MU_SendMsg(APP_M4_A_MU, RPMSG_MU_CHANNEL, msg);
             break;
-        case RL_PLATFORM_IMX8QM_M4_M4_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_M4_COM_ID:
             MU_SendMsg(APP_M4_M4_MU, RPMSG_MU_CHANNEL, msg);
             break;
         default:
             /* All the cases have been listed above, the default clause should not be reached. */
             break;
     }
-    env_unlock_mutex(platform_lock);
+    env_unlock_mutex(rp_platform_lock);
 }
 
 /*
@@ -182,7 +182,7 @@ int32_t LSIO_MU5_INT_B_IRQHandler(void)
     if ((((1UL << 27U) >> RPMSG_MU_CHANNEL) & MU_GetStatusFlags(APP_M4_A_MU)) != 0UL)
     {
         channel = MU_ReceiveMsgNonBlocking(APP_M4_A_MU, RPMSG_MU_CHANNEL); /* Read message from RX register. */
-        env_isr((uint32_t)((channel >> 16) | (RL_PLATFORM_IMX8QM_M4_A_COM_ID << 3)));
+        env_isr((uint32_t)((channel >> 16) | (RL_rp_platform_IMX8QM_M4_A_COM_ID << 3)));
     }
     /* ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
      * exception return operation might vector to incorrect interrupt.
@@ -204,7 +204,7 @@ int32_t LSIO_MU6_INT_B_IRQHandler(void)
     if ((((1UL << 27U) >> RPMSG_MU_CHANNEL) & MU_GetStatusFlags(APP_M4_A_MU)) != 0UL)
     {
         channel = MU_ReceiveMsgNonBlocking(APP_M4_A_MU, RPMSG_MU_CHANNEL); /* Read message from RX register. */
-        env_isr((uint32_t)((channel >> 16) | (RL_PLATFORM_IMX8QM_M4_A_COM_ID << 3)));
+        env_isr((uint32_t)((channel >> 16) | (RL_rp_platform_IMX8QM_M4_A_COM_ID << 3)));
     }
 
     /* ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
@@ -227,7 +227,7 @@ int32_t LSIO_MU7_INT_A_IRQHandler(void)
     if ((((1UL << 27U) >> RPMSG_MU_CHANNEL) & MU_GetStatusFlags(APP_M4_M4_MU)) != 0UL)
     {
         channel = MU_ReceiveMsgNonBlocking(APP_M4_M4_MU, RPMSG_MU_CHANNEL); /* Read message from RX register. */
-        env_isr((uint32_t)((channel >> 16) | (RL_PLATFORM_IMX8QM_M4_M4_COM_ID << 3)));
+        env_isr((uint32_t)((channel >> 16) | (RL_rp_platform_IMX8QM_M4_M4_COM_ID << 3)));
     }
     /* ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
      * exception return operation might vector to incorrect interrupt.
@@ -248,7 +248,7 @@ int32_t LSIO_MU7_INT_B_IRQHandler(void)
     if ((((1UL << 27U) >> RPMSG_MU_CHANNEL) & MU_GetStatusFlags(APP_M4_M4_MU)) != 0UL)
     {
         channel = MU_ReceiveMsgNonBlocking(APP_M4_M4_MU, RPMSG_MU_CHANNEL); /* Read message from RX register. */
-        env_isr((uint32_t)((channel >> 16) | (RL_PLATFORM_IMX8QM_M4_M4_COM_ID << 3)));
+        env_isr((uint32_t)((channel >> 16) | (RL_rp_platform_IMX8QM_M4_M4_COM_ID << 3)));
     }
 
     /* ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
@@ -264,13 +264,13 @@ int32_t LSIO_MU7_INT_B_IRQHandler(void)
 }
 #endif
 /**
- * platform_time_delay
+ * rp_platform_time_delay
  *
  * @param num_msec Delay time in ms.
  *
  * This is not an accurate delay, it ensures at least num_msec passed when return.
  */
-void platform_time_delay(uint32_t num_msec)
+void rp_platform_time_delay(uint32_t num_msec)
 {
     uint32_t loop;
 
@@ -289,20 +289,20 @@ void platform_time_delay(uint32_t num_msec)
 }
 
 /**
- * platform_in_isr
+ * rp_platform_in_isr
  *
  * Return whether CPU is processing IRQ
  *
  * @return True for IRQ, false otherwise.
  *
  */
-int32_t platform_in_isr(void)
+int32_t rp_platform_in_isr(void)
 {
     return (((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0UL) ? 1 : 0);
 }
 
 /**
- * platform_interrupt_enable
+ * rp_platform_interrupt_enable
  *
  * Enable peripheral-related interrupt
  *
@@ -311,13 +311,13 @@ int32_t platform_in_isr(void)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t platform_interrupt_enable(uint32_t vector_id)
+int32_t rp_platform_interrupt_enable(uint32_t vector_id)
 {
-    platform_global_isr_disable();
+    rp_platform_global_isr_disable();
 
     switch (RL_GET_COM_ID(vector_id))
     {
-        case RL_PLATFORM_IMX8QM_M4_A_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_A_COM_ID:
             RL_ASSERT(0 < disable_counter0);
             disable_counter0--;
             if (disable_counter0 == 0)
@@ -325,7 +325,7 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
                 NVIC_EnableIRQ(APP_M4_MU_NVIC_IRQn);
             }
             break;
-        case RL_PLATFORM_IMX8QM_M4_M4_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_M4_COM_ID:
             RL_ASSERT(0 < disable_counter1);
             disable_counter1--;
             if (disable_counter1 == 0)
@@ -337,12 +337,12 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
             /* All the cases have been listed above, the default clause should not be reached. */
             break;
     }
-    platform_global_isr_enable();
+    rp_platform_global_isr_enable();
     return ((int32_t)vector_id);
 }
 
 /**
- * platform_interrupt_disable
+ * rp_platform_interrupt_disable
  *
  * Disable peripheral-related interrupt.
  *
@@ -351,14 +351,14 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
  * @return vector_id Return value is never checked.
  *
  */
-int32_t platform_interrupt_disable(uint32_t vector_id)
+int32_t rp_platform_interrupt_disable(uint32_t vector_id)
 {
-    platform_global_isr_disable();
+    rp_platform_global_isr_disable();
     /* virtqueues use the same NVIC vector
        if counter is set - the interrupts are disabled */
     switch (RL_GET_COM_ID(vector_id))
     {
-        case RL_PLATFORM_IMX8QM_M4_A_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_A_COM_ID:
             RL_ASSERT(0 <= disable_counter0);
             if (disable_counter0 == 0)
             {
@@ -366,7 +366,7 @@ int32_t platform_interrupt_disable(uint32_t vector_id)
             }
             disable_counter0++;
             break;
-        case RL_PLATFORM_IMX8QM_M4_M4_COM_ID:
+        case RL_rp_platform_IMX8QM_M4_M4_COM_ID:
             RL_ASSERT(0 <= disable_counter1);
             if (disable_counter1 == 0)
             {
@@ -379,68 +379,68 @@ int32_t platform_interrupt_disable(uint32_t vector_id)
             break;
     }
 
-    platform_global_isr_enable();
+    rp_platform_global_isr_enable();
     return ((int32_t)vector_id);
 }
 
 /**
- * platform_map_mem_region
+ * rp_platform_map_mem_region
  *
  * Dummy implementation
  *
  */
-void platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
+void rp_platform_map_mem_region(uint32_t vrt_addr, uint32_t phy_addr, uint32_t size, uint32_t flags)
 {
 }
 
 /**
- * platform_cache_all_flush_invalidate
+ * rp_platform_cache_all_flush_invalidate
  *
  * Dummy implementation
  *
  */
-void platform_cache_all_flush_invalidate(void)
+void rp_platform_cache_all_flush_invalidate(void)
 {
 }
 
 /**
- * platform_cache_disable
+ * rp_platform_cache_disable
  *
  * Dummy implementation
  *
  */
-void platform_cache_disable(void)
+void rp_platform_cache_disable(void)
 {
 }
 
 /**
- * platform_vatopa
+ * rp_platform_vatopa
  *
  * Dummy implementation
  *
  */
-uint32_t platform_vatopa(void *addr)
+uint32_t rp_platform_vatopa(void *addr)
 {
     return ((uint32_t)(char *)addr);
 }
 
 /**
- * platform_patova
+ * rp_platform_patova
  *
  * Dummy implementation
  *
  */
-void *platform_patova(uint32_t addr)
+void *rp_platform_patova(uint32_t addr)
 {
     return ((void *)(char *)addr);
 }
 
 /**
- * platform_init
+ * rp_platform_init
  *
  * platform/environment init
  */
-int32_t platform_init(void)
+int32_t rp_platform_init(void)
 {
     /*
      * Prepare for the MU Interrupt
@@ -458,7 +458,7 @@ int32_t platform_init(void)
     IRQSTEER_EnableInterrupt(IRQSTEER, APP_M4_M4_MU_IRQn);
 
     /* Create lock used in multi-instanced RPMsg */
-    if (0 != env_create_mutex(&platform_lock, 1))
+    if (0 != env_create_mutex(&rp_platform_lock, 1))
     {
         return -1;
     }
@@ -467,11 +467,11 @@ int32_t platform_init(void)
 }
 
 /**
- * platform_deinit
+ * rp_platform_deinit
  *
  * platform/environment deinit process
  */
-int32_t platform_deinit(void)
+int32_t rp_platform_deinit(void)
 {
     MU_Deinit(APP_M4_A_MU);
     IRQSTEER_DisableInterrupt(IRQSTEER, APP_M4_A_MU_IRQn);
@@ -479,7 +479,7 @@ int32_t platform_deinit(void)
     IRQSTEER_DisableInterrupt(IRQSTEER, APP_M4_M4_MU_IRQn);
 
     /* Delete lock used in multi-instanced RPMsg */
-    env_delete_mutex(platform_lock);
-    platform_lock = ((void *)0);
+    env_delete_mutex(rp_platform_lock);
+    rp_platform_lock = ((void *)0);
     return 0;
 }

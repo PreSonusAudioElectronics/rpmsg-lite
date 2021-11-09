@@ -2,37 +2,20 @@
 # This file added by Presonus after forking
 #
 
-# rpmsg-lite common source files
-target_sources(pep PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/lib/common/llist.c
-    ${CMAKE_CURRENT_LIST_DIR}/lib/rpmsg_lite/rpmsg_lite.c
-    ${CMAKE_CURRENT_LIST_DIR}/lib/rpmsg_lite/rpmsg_ns.c
-    ${CMAKE_CURRENT_LIST_DIR}/lib/rpmsg_lite/rpmsg_queue.c
-)
+cmake_minimum_required(VERSION 3.10)
 
-# rpmsg-lite common include paths
-target_include_directories(pep PUBLIC
-    ${CMAKE_CURRENT_LIST_DIR}/lib/include
-)
+project(rpmsg-lite)
 
-# rpmsg-lite target-specific sources
-if("${TARGET_DEVICE}" STREQUAL "imx8mn-cm7")
-    target_sources(pep PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}/lib/rpmsg_lite/porting/platform/imx8mn_m7/rpmsg_platform.c
-        ${CMAKE_CURRENT_LIST_DIR}/lib/rpmsg_lite/porting/platform/imx8mn_m7/rsc_table.c
-        ${CMAKE_CURRENT_LIST_DIR}/lib/virtio/virtqueue.c
-    )
+set(RPMSG_LIB_ROOT ${CMAKE_CURRENT_LIST_DIR} )
 
-    target_include_directories(pep PUBLIC
-        ${CMAKE_CURRENT_LIST_DIR}/lib/include/platform/imx8mn_m7
-    )
-endif()
+include( ${CMAKE_CURRENT_LIST_DIR}/cmake/common.cmake )
 
-# rpmsg-lite environment-specifics
 if("${TARGET_ENVIRONMENT}" STREQUAL "zephyr")
-    target_sources(pep PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}/lib/rpmsg_lite/porting/environment/zephyr/rpmsg_env_zephyr.c
-    )
+	# Use case: Zephyr project 
+	include(${CMAKE_CURRENT_LIST_DIR}/cmake/zephyr.cmake)
+elseif("${TARGET_ENVIRONMENT}" STREQUAL "gtest")
+	include(${CMAKE_CURRENT_LIST_DIR}/cmake/gtest.cmake)
 endif()
 
 
+set (CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")

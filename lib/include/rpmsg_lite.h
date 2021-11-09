@@ -56,9 +56,9 @@ extern "C" {
 /* Shared memory "allocator" parameters */
 #define RL_WORD_SIZE (sizeof(uint32_t))
 #define RL_WORD_ALIGN_UP(a) \
-    (((((uint32_t)a) & (RL_WORD_SIZE - 1U)) != 0U) ? ((((uint32_t)a) & (~(RL_WORD_SIZE - 1U))) + 4U) : ((uint32_t)a))
+    (((((uintptr_t)a) & (RL_WORD_SIZE - 1U)) != 0U) ? ((((uintptr_t)a) & (~(RL_WORD_SIZE - 1U))) + 4U) : ((uintptr_t)a))
 #define RL_WORD_ALIGN_DOWN(a) \
-    (((((uint32_t)a) & (RL_WORD_SIZE - 1U)) != 0U) ? (((uint32_t)a) & (~(RL_WORD_SIZE - 1U))) : ((uint32_t)a))
+    (((((uintptr_t)a) & (RL_WORD_SIZE - 1U)) != 0U) ? (((uintptr_t)a) & (~(RL_WORD_SIZE - 1U))) : ((uintptr_t)a))
 
 /* Definitions for device types , null pointer, etc.*/
 #define RL_SUCCESS    (0)
@@ -83,6 +83,24 @@ extern "C" {
 #define RL_ERR_NO_BUFF   (RL_ERRORS_BASE - 6)
 #define RL_NOT_READY     (RL_ERRORS_BASE - 7)
 #define RL_ALREADY_DONE  (RL_ERRORS_BASE - 8)
+
+
+static inline const char *rpmsg_lite_get_err_string(int err)
+{
+    switch(err)
+    {
+        case RL_ERRORS_BASE: return "RL_ERRORS_BASE"; break;
+        case RL_ERR_NO_MEM: return "RL_ERR_NO_MEM"; break;
+        case RL_ERR_BUFF_SIZE: return "RL_ERR_BUFF_SIZE"; break;
+        case RL_ERR_PARAM: return "RL_ERR_PARAM"; break;
+        case RL_ERR_DEV_ID: return "RL_ERR_DEV_ID"; break;
+        case RL_ERR_MAX_VQ: return "RL_ERR_MAX_VQ"; break;
+        case RL_ERR_NO_BUFF: return "RL_ERR_NO_BUFF"; break;
+        case RL_NOT_READY: return "RL_NOT_READY"; break;
+        case RL_ALREADY_DONE: return "RL_ALREADY_DONE"; break;
+        default: return "UNKNOWN_ERR"; break;
+    }
+}
 
 /* Init flags */
 #define RL_NO_FLAGS (0)

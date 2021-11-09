@@ -43,7 +43,7 @@ struct remote_resource_table
  * Copy resource table to shared memory base for early M4 boot case.
  * In M4 early boot case, Linux kernel need to get resource table before file system gets loaded.
  */
-void copyResourceTable(void);
+void copyResourceTable(void *shmem_addr);
 
 #if defined __cplusplus
 }

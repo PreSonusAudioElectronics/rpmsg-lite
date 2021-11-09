@@ -29,6 +29,7 @@
 
 #include "rpmsg_env.h"
 #include "virtqueue.h"
+#include "rpmsg_trace.h"
 
 /* Prototype for internal functions. */
 static void vq_ring_update_avail(struct virtqueue *vq, uint16_t desc_idx);
@@ -39,6 +40,8 @@ static int32_t vq_ring_enable_interrupt(struct virtqueue *vq, uint16_t ndesc);
 static int32_t vq_ring_must_notify_host(struct virtqueue *vq);
 static void vq_ring_notify_host(struct virtqueue *vq);
 static uint16_t virtqueue_nused(struct virtqueue *vq);
+
+#define LOCAL_TRACE (0)
 
 /*!
  * virtqueue_create - Creates new VirtIO queue
@@ -169,6 +172,7 @@ int32_t virtqueue_create_static(uint16_t id,
  */
 int32_t virtqueue_add_buffer(struct virtqueue *vq, uint16_t head_idx)
 {
+    RLTRACEF("vq: %p, head_idx: %d\n", vq, head_idx );
     volatile int32_t status = VQUEUE_SUCCESS;
 
     VQ_PARAM_CHK(vq == VQ_NULL, status, ERROR_VQUEUE_INVLD_PARAM);
@@ -188,6 +192,7 @@ int32_t virtqueue_add_buffer(struct virtqueue *vq, uint16_t head_idx)
 
     VQUEUE_IDLE(vq, avail_write);
 
+    RLTRACEF("returning: %d\n", status);
     return (status);
 }
 
@@ -223,6 +228,7 @@ int32_t virtqueue_fill_avail_buffers(struct virtqueue *vq, void *buffer, uint32_
 #endif
         dp->len   = len;
         dp->flags = VRING_DESC_F_WRITE;
+        RLTRACEF("dp->addr: %p\n", (void*)dp->addr );
 
         vq->vq_desc_head_idx++;
 
@@ -245,13 +251,24 @@ int32_t virtqueue_fill_avail_buffers(struct virtqueue *vq, void *buffer, uint32_
  */
 void *virtqueue_get_buffer(struct virtqueue *vq, uint32_t *len, uint16_t *idx)
 {
+    RLTRACEF("vq: %p, len: %p, idx: %p\n", vq, len, idx );
     struct vring_used_elem *uep;
     uint16_t used_idx, desc_idx;
 
-    if ((vq == VQ_NULL) || (vq->vq_used_cons_idx == vq->vq_ring.used->idx))
+    if ((vq == VQ_NULL) )
     {
+        RLTRACEF("vq is NULL\n");
         return (VQ_NULL);
     }
+
+    if ( (vq->vq_used_cons_idx == vq->vq_ring.used->idx) )
+    {
+        RLTRACEF("vq empty\n");
+        RLTRACEF("vq_used_cons_idx: %d, vq_ring.used->idx: %d\n", 
+            vq->vq_used_cons_idx, vq->vq_ring.used->idx );
+        return (VQ_NULL);
+    }
+
     VQUEUE_BUSY(vq, used_read);
 
     used_idx = (uint16_t)(vq->vq_used_cons_idx & ((uint16_t)(vq->vq_nentries - 1U)));
@@ -275,9 +292,11 @@ void *virtqueue_get_buffer(struct virtqueue *vq, uint32_t *len, uint16_t *idx)
     VQUEUE_IDLE(vq, used_read);
 
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-    return env_map_patova(vq->env, ((uint32_t)(vq->vq_ring.desc[desc_idx].addr)));
+    return env_map_patova(vq->env, ((uintptr_t)(vq->vq_ring.desc[desc_idx].addr)));
 #else
-    return env_map_patova((uint32_t)(vq->vq_ring.desc[desc_idx].addr));
+    uint64_t pa = vq->vq_ring.desc[desc_idx].addr;
+    void* ret = env_map_patova(pa);
+    return ret;
 #endif
 }
 
@@ -359,9 +378,9 @@ void *virtqueue_get_available_buffer(struct virtqueue *vq, uint16_t *avail_idx, 
 
     env_rmb();
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-    buffer = env_map_patova(vq->env, ((uint32_t)(vq->vq_ring.desc[*avail_idx].addr));
+    buffer = env_map_patova(vq->env, ((uintptr_t)(vq->vq_ring.desc[*avail_idx].addr)));
 #else
-    buffer = env_map_patova((uint32_t)(vq->vq_ring.desc[*avail_idx].addr));
+    buffer = env_map_patova((uintptr_t)(vq->vq_ring.desc[*avail_idx].addr));
 #endif
     *len = vq->vq_ring.desc[*avail_idx].len;
 
@@ -554,6 +573,7 @@ static uint16_t vq_ring_add_buffer(
 #endif
     dp->len   = length;
     dp->flags = VRING_DESC_F_WRITE;
+    RLTRACEF("dp->addr: %p\n", (void*)dp->addr );
 
     return (head_idx + 1U);
 }
@@ -598,7 +618,7 @@ static void vq_ring_update_avail(struct virtqueue *vq, uint16_t desc_idx)
     vq->vq_ring.avail->ring[avail_idx] = desc_idx;
 
     env_wmb();
-
+    
     vq->vq_ring.avail->idx++;
 
     /* Keep pending count until virtqueue_notify(). */

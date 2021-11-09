@@ -12,6 +12,7 @@
 *.pbd
 *.browse
 *.srec
+.vscode-ctags
 firmware
 armgcc
 mdk
