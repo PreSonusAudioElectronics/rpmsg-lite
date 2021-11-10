@@ -84,6 +84,24 @@ extern "C" {
 #define RL_NOT_READY     (RL_ERRORS_BASE - 7)
 #define RL_ALREADY_DONE  (RL_ERRORS_BASE - 8)
 
+
+static inline const char *rpmsg_lite_get_err_string(int err)
+{
+    switch(err)
+    {
+        case RL_ERRORS_BASE: return "RL_ERRORS_BASE"; break;
+        case RL_ERR_NO_MEM: return "RL_ERR_NO_MEM"; break;
+        case RL_ERR_BUFF_SIZE: return "RL_ERR_BUFF_SIZE"; break;
+        case RL_ERR_PARAM: return "RL_ERR_PARAM"; break;
+        case RL_ERR_DEV_ID: return "RL_ERR_DEV_ID"; break;
+        case RL_ERR_MAX_VQ: return "RL_ERR_MAX_VQ"; break;
+        case RL_ERR_NO_BUFF: return "RL_ERR_NO_BUFF"; break;
+        case RL_NOT_READY: return "RL_NOT_READY"; break;
+        case RL_ALREADY_DONE: return "RL_ALREADY_DONE"; break;
+        default: return "UNKNOWN_ERR"; break;
+    }
+}
+
 /* Init flags */
 #define RL_NO_FLAGS (0)
 

@@ -181,6 +181,7 @@ void env_memcpy(void *dst, void const *src, uint32_t len);
 int32_t env_strcmp(const char *dst, const char *src);
 void env_strncpy(char *dest, const char *src, uint32_t len);
 int32_t env_strncmp(char *dest, const char *src, uint32_t len);
+int env_strnlen(const char *str, uint32_t maxLen);
 #define env_print(...) printf(__VA_ARGS__)
 
 /*!
@@ -548,6 +549,24 @@ int32_t env_get_queue(void *queue, void *msg, uint32_t timeout_ms);
  */
 
 int32_t env_get_current_queue_size(void *queue);
+
+/*!
+ * \brief flush cache for a range
+ * Will compile to nothing on systems with no cache
+ * 
+ * \param addr (use virtual address on MMU systems, not physical address)
+ * \param len 
+ */
+void env_cache_sync_range(uintptr_t addr, size_t len);
+
+/*!
+ * \brief invalidate cache for a range
+ * Will compile to nothing on systems with no cache
+ * 
+ * \param addr (use virtual address on MMU systems, not physical address)
+ * \param len 
+ */
+void env_cache_invalidate_range(uintptr_t addr, size_t len);
 
 /*!
  * env_isr

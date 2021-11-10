@@ -32,6 +32,9 @@
 #include "rpmsg_lite.h"
 #include "rpmsg_queue.h"
 
+#include "rpmsg_trace.h"
+#define LOCAL_TRACE (0)
+
 typedef struct
 {
     uint32_t src;
@@ -41,6 +44,14 @@ typedef struct
 
 int32_t rpmsg_queue_rx_cb(void *payload, uint32_t payload_len, uint32_t src, void *priv)
 {
+    RLTRACEF("payload: %p, payload_len: %d, src: %d, priv: %p\n", payload, payload_len, src, priv);
+    char *data = (char*)payload;
+    int len = env_strnlen(data, payload_len + 1);
+    if( len >= 0 && ((unsigned)len) <= payload_len )
+    {
+        RLTRACEF("payload: %s\n", data);
+    }
+
     rpmsg_queue_rx_cb_data_t msg;
 
     RL_ASSERT(priv != RL_NULL);
@@ -102,6 +113,7 @@ int32_t rpmsg_queue_recv(struct rpmsg_lite_instance *rpmsg_lite_dev,
                          uint32_t *len,
                          uint32_t timeout)
 {
+    RLTRACE_ENTRY;
     rpmsg_queue_rx_cb_data_t msg = {0};
     int32_t retval               = RL_SUCCESS;
 

@@ -29,6 +29,7 @@
 
 #include "rpmsg_env.h"
 #include "virtqueue.h"
+#include "rpmsg_trace.h"
 
 /* Prototype for internal functions. */
 static void vq_ring_update_avail(struct virtqueue *vq, uint16_t desc_idx);
@@ -39,6 +40,8 @@ static int32_t vq_ring_enable_interrupt(struct virtqueue *vq, uint16_t ndesc);
 static int32_t vq_ring_must_notify_host(struct virtqueue *vq);
 static void vq_ring_notify_host(struct virtqueue *vq);
 static uint16_t virtqueue_nused(struct virtqueue *vq);
+
+#define LOCAL_TRACE (0)
 
 /*!
  * virtqueue_create - Creates new VirtIO queue
@@ -277,7 +280,9 @@ void *virtqueue_get_buffer(struct virtqueue *vq, uint32_t *len, uint16_t *idx)
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
     return env_map_patova(vq->env, ((uintptr_t)(vq->vq_ring.desc[desc_idx].addr)));
 #else
-    return env_map_patova((uintptr_t)(vq->vq_ring.desc[desc_idx].addr));
+    uint64_t pa = vq->vq_ring.desc[desc_idx].addr;
+    void* ret = env_map_patova(pa);
+    return ret;
 #endif
 }
 

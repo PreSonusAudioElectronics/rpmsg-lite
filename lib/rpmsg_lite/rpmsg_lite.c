@@ -30,9 +30,14 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <string.h>
+
 #include "rpmsg_lite.h"
 #include "rpmsg_platform.h"
 #include "rpmsg_trace.h"
+
+#include "rpmsg_trace.h"
+#define LOCAL_TRACE (0)
 
 /* rpmsg_std_hdr contains a reserved field,
  * this implementation of RPMSG uses this reserved
@@ -159,6 +164,7 @@ static void rpmsg_lite_rx_callback(struct virtqueue *vq)
     uint32_t rx_freed = RL_FALSE;
 #endif
 
+    RLTRACE_ENTRY;
     RL_ASSERT(rpmsg_lite_dev != RL_NULL);
 
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
@@ -177,6 +183,10 @@ static void rpmsg_lite_rx_callback(struct virtqueue *vq)
         {
             ept    = (struct rpmsg_lite_endpoint *)node->data;
             cb_ret = ept->rx_cb(rpmsg_msg->data, rpmsg_msg->hdr.len, rpmsg_msg->hdr.src, ept->rx_cb_data);
+        }
+        else
+        {
+            RLTRACEF("Endpoint not found!\n");
         }
 
         if (cb_ret == RL_HOLD)
@@ -369,6 +379,7 @@ static void *vq_tx_alloc_master(struct virtqueue *tvq, uint32_t *len, uint16_t *
  */
 static void *vq_rx_master(struct virtqueue *rvq, uint32_t *len, uint16_t *idx)
 {
+    env_cache_invalidate_range( (uintptr_t)rvq->vq_ring_mem, rvq->vq_ring_size);
     return virtqueue_get_buffer(rvq, len, idx);
 }
 
@@ -615,6 +626,8 @@ static int32_t rpmsg_lite_format_message(struct rpmsg_lite_instance *rpmsg_lite_
     uint32_t tick_count = 0U;
     uint32_t buff_len;
 
+    RLTRACE_ENTRY;
+
     if (rpmsg_lite_dev == RL_NULL)
     {
         return RL_ERR_PARAM;
@@ -643,6 +656,7 @@ static int32_t rpmsg_lite_format_message(struct rpmsg_lite_instance *rpmsg_lite_
 
     while (buffer == RL_NULL)
     {
+        RLTRACEF("buf alloc\n");
         env_sleep_msec(RL_MS_PER_INTERVAL);
         env_lock_mutex(rpmsg_lite_dev->lock);
         buffer = rpmsg_lite_dev->vq_ops->vq_tx_alloc(rpmsg_lite_dev->tvq, &buff_len, &idx);
@@ -668,6 +682,8 @@ static int32_t rpmsg_lite_format_message(struct rpmsg_lite_instance *rpmsg_lite_
     env_lock_mutex(rpmsg_lite_dev->lock);
     /* Enqueue buffer on virtqueue. */
     rpmsg_lite_dev->vq_ops->vq_tx(rpmsg_lite_dev->tvq, buffer, buff_len, idx);
+    env_cache_sync_range((uintptr_t)buffer, buff_len);
+
     /* Let the other side know that there is a job to process. */
     virtqueue_kick(rpmsg_lite_dev->tvq);
     env_unlock_mutex(rpmsg_lite_dev->lock);
@@ -682,6 +698,8 @@ int32_t rpmsg_lite_send(struct rpmsg_lite_instance *rpmsg_lite_dev,
                         uint32_t size,
                         uint32_t timeout)
 {
+    RLTRACEF("dst: %d, size: %d, timeout: %d\n", dst, size, timeout);
+
     if (ept == RL_NULL)
     {
         return RL_ERR_PARAM;
@@ -999,6 +1017,10 @@ struct rpmsg_lite_instance *rpmsg_lite_master_init(void *shmem_addr,
 #endif
             return RL_NULL;
         }
+
+        RLTRACEF("vq %d created with mem at: %p\n", idx, vqs[idx]->vq_ring_mem );
+        RLTRACEF(" vq_used_cons_idx: %d, vq_ring.used->idx: %d\n", vqs[idx]->vq_used_cons_idx,
+            vqs[idx]->vq_ring.used->idx );
 
         /* virtqueue has reference to the RPMsg Lite instance */
         vqs[idx]->priv = (void *)rpmsg_lite_dev;
