@@ -110,7 +110,7 @@ void *env_get_rp_platform_context(void *env_context)
  */
 static int32_t env_in_isr(void)
 {
-    return rp_platform_in_isr();
+    return 0;
 }
 
 /*!
@@ -301,6 +301,25 @@ void env_strncpy(char *dst, const char *src, uint32_t len)
 int32_t env_strncmp(char *dst, const char *src, uint32_t len)
 {
     return (strncmp(dst, src, len));
+}
+
+int env_strnlen(const char *str, uint32_t maxLen)
+{
+    unsigned i = 0;
+    if( NULL == str )
+    {
+        return -1;
+    }
+    while( i < maxLen )
+    {
+        if( str[i] == '\0' )
+        {
+            return (int)i;
+        }
+        i++;
+    }
+    // we hit the max length
+    return -1;
 }
 
 /*!
@@ -764,4 +783,16 @@ int32_t env_get_queue(void *queue, void *msg, uint32_t timeout_ms)
 int32_t env_get_current_queue_size(void *queue)
 {
     return ((ThreadsafeQueue *)queue)->getSize();
+}
+
+void env_cache_sync_range(uintptr_t addr, size_t len)
+{}
+
+void env_cache_invalidate_range(uintptr_t addr, size_t len)
+{}
+
+void *env_get_platform_context(void *env_context)
+{
+    // We've just stored the env context pointer so return it directly
+    return env_context;
 }

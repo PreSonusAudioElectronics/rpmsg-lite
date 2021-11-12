@@ -54,6 +54,8 @@
 
 #define APP_MU_IRQ_PRIORITY (3U)
 
+#define LOCAL_TRACE (1)
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -520,6 +522,25 @@ int32_t env_strncmp(char *dst, const char *src, uint32_t len)
     return (strncmp(dst, src, len));
 }
 
+int env_strnlen(const char *str, uint32_t maxLen)
+{
+    unsigned i = 0;
+    if( NULL == str )
+    {
+        return -1;
+    }
+    while( i < maxLen )
+    {
+        if( str[i] == '\0' )
+        {
+            return (int)i;
+        }
+        i++;
+    }
+    // we hit the max length
+    return -1;
+}
+
 /*!
  *
  * env_mb - implementation
@@ -705,4 +726,8 @@ void *env_get_platform_context(void *env_context)
     return env_context;
 }
 
+inline void env_cache_sync_range(uintptr_t addr, size_t len)
+{}
 
+inline void env_cache_invalidate_range(uintptr_t addr, size_t len)
+{}

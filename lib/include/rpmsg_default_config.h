@@ -160,6 +160,12 @@ static inline void RL_HANG(void)
 #define RL_ASSERT(x) RL_ASSERT_BOOL((int32_t)(x) != 0)
 
 #endif
+
+#ifndef RL_PRINTF
+#include <stdio.h>
+#define RL_PRINTF printf
+#endif
+
 //@}
 
 #endif /* RPMSG_DEFAULT_CONFIG_H_ */

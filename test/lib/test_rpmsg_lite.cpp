@@ -5,7 +5,7 @@
 #include "rsc_table.h"
 #include "rpmsg_env_linux.h"
 #include "threadsafequeue.h"
-#include "rpmsgtestdispatchers.h"
+#include "rpmsgtesters.h"
 
 #include <gtest/gtest.h>
 

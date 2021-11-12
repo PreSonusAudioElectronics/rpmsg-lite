@@ -32,6 +32,7 @@ void *env_get_env(uint32_t channel);
 
 #define APP_MU_IRQ_PRIORITY (3U)
 #define RL_MASK_MU_CHAN0_IRQ (1UL << 27U)
+#define LOCAL_TRACE (1)
 
 static inline uint32_t getRxChanMask(uint32_t channel)
 {

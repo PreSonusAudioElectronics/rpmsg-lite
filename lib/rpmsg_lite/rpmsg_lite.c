@@ -34,6 +34,7 @@
 
 #include "rpmsg_lite.h"
 #include "rpmsg_platform.h"
+#include "rpmsg_trace.h"
 
 #include "rpmsg_trace.h"
 #define LOCAL_TRACE (0)
