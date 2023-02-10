@@ -2,7 +2,7 @@
  * Copyright (c) 2014, Mentor Graphics Corporation
  * Copyright (c) 2015 Xilinx, Inc.
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
- * Copyright 2016-2019 NXP
+ * Copyright 2016-2022 NXP
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -107,6 +107,31 @@ void *env_get_rp_platform_context(void *env_context)
 {
     env_context_t *env = env_context;
     return env->rp_platform_context;
+}
+
+/*!
+ * env_wait_for_link_up
+ *
+ * Wait until the link_state parameter of the rpmsg_lite_instance is set.
+ * Busy loop implementation, timeout_ms parameter ignored for now, to be replaced by events.
+ *
+ */
+uint32_t env_wait_for_link_up(volatile uint32_t *link_state, uint32_t link_id, uint32_t timeout_ms)
+{
+    while (*link_state != 1U)
+    {
+    }
+    return 1U;
+}
+
+/*!
+ * env_tx_callback
+ *
+ * Set event to notify task waiting in env_wait_for_link_up().
+ *
+ */
+void env_tx_callback(uint32_t link_id)
+{
 }
 
 /*!
@@ -311,20 +336,37 @@ void *env_map_patova(void *env, uint32_t address)
  * Creates a mutex with the given initial count.
  *
  */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_mutex(void **lock, int32_t count, void *context)
+#else
 int32_t env_create_mutex(void **lock, int32_t count)
+#endif
 {
+    if (count > RL_ENV_MAX_MUTEX_COUNT)
+    {
+        return -1;
+    }
+
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    *lock = context;
+#else
     *lock = env_allocate_memory(sizeof(pthread_mutex_t));
+#endif
     if (*lock == ((void *)0))
     {
         return -1;
     }
-    if (pthread_mutex_init((pthread_mutex_t *)*lock, ((void *)0)) != EOK)
+    if (EOK == pthread_mutex_init((pthread_mutex_t *)*lock, ((void *)0)))
     {
+        return 0;
+    }
+    else
+    {
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
         env_free_memory(*lock);
-        *lock = ((void *)0);
+#endif
         return -1;
     }
-    return 0;
 }
 
 /*!
@@ -336,7 +378,9 @@ int32_t env_create_mutex(void **lock, int32_t count)
 void env_delete_mutex(void *lock)
 {
     pthread_mutex_destroy(lock);
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
     env_free_memory(lock);
+#endif
 }
 
 /*!
@@ -367,10 +411,17 @@ void env_unlock_mutex(void *lock)
  * when signal has to be sent from the interrupt context to main
  * thread context.
  */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_sync_lock(void **lock, int32_t state, void *context)
+{
+    return env_create_mutex(lock, state, context); /* state=1 .. initially free */
+}
+#else
 int32_t env_create_sync_lock(void **lock, int32_t state)
 {
     return env_create_mutex(lock, state); /* state=1 .. initially free */
 }
+#endif
 
 /*!
  * env_delete_sync_lock
@@ -594,14 +645,28 @@ int32_t env_deinit_interrupt(void *env, int32_t vq_id)
  * @param queue -  pointer to created queue
  * @param length -  maximum number of elements in the queue
  * @param element_size - queue element size in bytes
+ * @param queue_static_storage - pointer to queue static storage buffer
+ * @param queue_static_context - pointer to queue static context
  *
  * @return - status of function execution
  */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_queue(void **queue,
+                         int32_t length,
+                         int32_t element_size,
+                         uint8_t *queue_static_storage,
+                         rpmsg_static_queue_ctxt *queue_static_context)
+#else
 int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
+#endif
 {
     char name[100];
     struct mq_attr mqstat;
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    env_queue_t *q = (env_queue_t *)queue_static_context;
+#else
     env_queue_t *q = env_allocate_memory(sizeof(env_queue_t));
+#endif
     if (q == ((void *)0))
     {
         return -1;
@@ -615,10 +680,12 @@ int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
     mqstat.mq_recvwait = 0;
     mqstat.mq_sendwait = 0;
     q->msg_len         = element_size;
-    q->mqd             = mq_open(name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR, &mqstat);
+    q->mqd             = (name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR, &mqstat);
     if (q->mqd == -1)
     {
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
         env_free_memory(q);
+#endif
         fprintf(stderr, "mq_open failed: %s\n", strerror(errno));
         return -1;
     }
@@ -639,7 +706,9 @@ void env_delete_queue(void *queue)
     env_queue_t *q = queue;
 
     mq_close(q->mqd);
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
     env_free_memory(queue);
+#endif
 }
 
 /*!

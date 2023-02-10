@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2019 NXP
+ * Copyright 2017-2021 NXP
  * All rights reserved.
  *
  *
@@ -65,7 +65,10 @@ static int32_t isr_counter0     = 0; /* RL_rp_platform_IMX8QM_M4_A_USER_LINK_ID 
 static int32_t isr_counter1     = 0; /* RL_rp_platform_IMX8QM_M4_M4_USER_LINK_ID isr counter */
 static int32_t disable_counter0 = 0;
 static int32_t disable_counter1 = 0;
-static void *rp_platform_lock;
+static void *platform_lock;
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
+#endif
 
 static void rp_platform_global_isr_disable(void)
 {
@@ -458,7 +461,11 @@ int32_t rp_platform_init(void)
     IRQSTEER_EnableInterrupt(IRQSTEER, APP_M4_M4_MU_IRQn);
 
     /* Create lock used in multi-instanced RPMsg */
-    if (0 != env_create_mutex(&rp_platform_lock, 1))
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    if (0 != env_create_mutex(&platform_lock, 1, &platform_lock_static_ctxt))
+#else
+    if (0 != env_create_mutex(&platform_lock, 1))
+#endif
     {
         return -1;
     }

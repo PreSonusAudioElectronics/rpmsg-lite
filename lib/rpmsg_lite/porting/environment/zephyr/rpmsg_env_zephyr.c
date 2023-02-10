@@ -2,7 +2,7 @@
  * Copyright (c) 2014, Mentor Graphics Corporation
  * Copyright (c) 2015 Xilinx, Inc.
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
- * Copyright 2016-2019 NXP
+ * Copyright 2016-2022 NXP
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,18 +43,11 @@
  *
  **************************************************************************/
 
+#include "rpmsg_compiler.h"
 #include "rpmsg_env.h"
 #include <zephyr.h>
 #include "rpmsg_platform.h"
 #include "virtqueue.h"
-#include "rpmsg_compiler.h"
-#include "rpmsg_config.h"
-#include "rpmsg_lite.h"
-#include "rpmsg_trace.h"
-
-#define APP_MU_IRQ_PRIORITY (3U)
-
-#define LOCAL_TRACE (1)
 
 #include <stdlib.h>
 #include <string.h>
@@ -74,6 +67,7 @@
 extern int32_t MU_IRQ_HANDLER(void);
 
 static struct k_sem env_sema    = {0};
+static struct k_event env_event = {0};
 
 /* Max supported ISR's per MU channel */
 #define ENV_N_ISRS_PER_CHAN (32U)
@@ -122,6 +116,45 @@ ISR_DIRECT_DECLARE(zephMuHandler)
 }
 
 /*!
+ * env_wait_for_link_up
+ *
+ * Wait until the link_state parameter of the rpmsg_lite_instance is set.
+ * Utilize events to avoid busy loop implementation.
+ *
+ */
+uint32_t env_wait_for_link_up(volatile uint32_t *link_state, uint32_t link_id, uint32_t timeout_ms)
+{
+    if (*link_state != 1U)
+    {
+        if (env_in_isr() != 0)
+        {
+            timeout_ms = 0; /* force timeout == 0 when in ISR */
+        }
+
+        if (0 != k_event_wait_all(&env_event, (1UL << link_id), false, timeout_ms))
+        {
+            return 1U;
+        }
+        return 0U;
+    }
+    else
+    {
+        return 1U;
+    }
+}
+
+/*!
+ * env_tx_callback
+ *
+ * Set event to notify task waiting in env_wait_for_link_up().
+ *
+ */
+void env_tx_callback(uint32_t link_id)
+{
+    k_event_post(&env_event, (1UL << link_id));
+}
+
+/*!
  * env_init
  *
  * Initializes OS/BM environment.
@@ -129,7 +162,26 @@ ISR_DIRECT_DECLARE(zephMuHandler)
  */
 int32_t env_init(void **env_context, void *env_init_data)
 {
-    int32_t retval = RL_SUCCESS;
+    int32_t retval;
+    k_sched_lock(); /* stop scheduler */
+    /* verify 'env_init_counter' */
+    RL_ASSERT(env_init_counter >= 0);
+    if (env_init_counter < 0)
+    {
+        k_sched_unlock(); /* re-enable scheduler */
+        return -1;
+    }
+    env_init_counter++;
+    /* multiple call of 'env_init' - return ok */
+    if (env_init_counter == 1)
+    {
+        /* first call */
+        k_sem_init(&env_sema, 0, 1);
+        k_event_init(&env_event);
+        (void)memset(isr_table, 0, sizeof(isr_table));
+        k_sched_unlock();
+        retval = platform_init();
+        k_sem_give(&env_sema);
 
     if( !env_context || !env_init_data ) {
         retval = RL_ERR_PARAM;
@@ -500,26 +552,26 @@ int32_t env_strcmp(const char *dst, const char *src)
  *
  * env_strncpy - implementation
  *
- * @param dst
+ * @param dest
  * @param src
  * @param len
  */
-void env_strncpy(char *dst, const char *src, uint32_t len)
+void env_strncpy(char *dest, const char *src, uint32_t len)
 {
-    (void)strncpy(dst, src, len);
+    (void)strncpy(dest, src, len);
 }
 
 /*!
  *
  * env_strncmp - implementation
  *
- * @param dst
+ * @param dest
  * @param src
  * @param len
  */
-int32_t env_strncmp(char *dst, const char *src, uint32_t len)
+int32_t env_strncmp(char *dest, const char *src, uint32_t len)
 {
-    return (strncmp(dst, src, len));
+    return (strncmp(dest, src, len));
 }
 
 int env_strnlen(const char *str, uint32_t maxLen)
@@ -593,22 +645,33 @@ void *env_map_patova(void *env, uintptr_t address)
  * Creates a mutex with the given initial count.
  *
  */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_mutex(void **lock, int32_t count, void *context)
+#else
 int32_t env_create_mutex(void **lock, int32_t count)
+#endif
 {
     struct k_sem *semaphore_ptr;
-
-    semaphore_ptr = (struct k_sem *)env_allocate_memory(sizeof(struct k_sem));
-    if (semaphore_ptr == ((void *)0))
-    {
-        return -1;
-    }
 
     if (count > RL_ENV_MAX_MUTEX_COUNT)
     {
         return -1;
     }
 
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    semaphore_ptr = (struct k_sem *)context;
+#else
+    semaphore_ptr = (struct k_sem *)env_allocate_memory(sizeof(struct k_sem));
+#endif
+    if (semaphore_ptr == ((void *)0))
+    {
+        return -1;
+    }
+
     k_sem_init(semaphore_ptr, count, RL_ENV_MAX_MUTEX_COUNT);
+    /* Becasue k_sem_init() does not return any status, we do not know if all is OK or not.
+       If something would not be OK dynamically allocated memory has to be freed here. */
+
     *lock = (void *)semaphore_ptr;
     return 0;
 }
@@ -622,7 +685,9 @@ int32_t env_create_mutex(void **lock, int32_t count)
 void env_delete_mutex(void *lock)
 {
     k_sem_reset(lock);
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
     env_free_memory(lock);
+#endif
 }
 
 /*!
@@ -659,10 +724,17 @@ void env_unlock_mutex(void *lock)
  * when signal has to be sent from the interrupt context to main
  * thread context.
  */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_sync_lock(void **lock, int32_t state, void *context)
+{
+    return env_create_mutex(lock, state, context); /* state=1 .. initially free */
+}
+#else
 int32_t env_create_sync_lock(void **lock, int32_t state)
 {
     return env_create_mutex(lock, state); /* state=1 .. initially free */
 }
+#endif
 
 /*!
  * env_delete_sync_lock
@@ -726,8 +798,200 @@ void *env_get_platform_context(void *env_context)
     return env_context;
 }
 
-inline void env_cache_sync_range(uintptr_t addr, size_t len)
-{}
+/*!
+ * env_enable_interrupt
+ *
+ * Enables the given interrupt
+ *
+ * @param vector_id   - virtual interrupt vector number
+ */
 
-inline void env_cache_invalidate_range(uintptr_t addr, size_t len)
-{}
+void env_enable_interrupt(uint32_t vector_id)
+{
+    (void)platform_interrupt_enable(vector_id);
+}
+
+/*!
+ * env_disable_interrupt
+ *
+ * Disables the given interrupt
+ *
+ * @param vector_id   - virtual interrupt vector number
+ */
+
+void env_disable_interrupt(uint32_t vector_id)
+{
+    (void)platform_interrupt_disable(vector_id);
+}
+
+/*!
+ * env_map_memory
+ *
+ * Enables memory mapping for given memory region.
+ *
+ * @param pa   - physical address of memory
+ * @param va   - logical address of memory
+ * @param size - memory size
+ * param flags - flags for cache/uncached  and access type
+ */
+
+void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags)
+{
+    platform_map_mem_region(va, pa, size, flags);
+}
+
+/*!
+ * env_disable_cache
+ *
+ * Disables system caches.
+ *
+ */
+
+void env_disable_cache(void)
+{
+    platform_cache_all_flush_invalidate();
+    platform_cache_disable();
+}
+
+/*========================================================= */
+/* Util data / functions  */
+
+void env_isr(uint32_t vector)
+{
+    struct isr_info *info;
+    RL_ASSERT(vector < ISR_COUNT);
+    if (vector < ISR_COUNT)
+    {
+        info = &isr_table[vector];
+        virtqueue_notification((struct virtqueue *)info->data);
+    }
+}
+
+/*
+ * env_create_queue
+ *
+ * Creates a message queue.
+ *
+ * @param queue -  pointer to created queue
+ * @param length -  maximum number of elements in the queue
+ * @param element_size - queue element size in bytes
+ * @param queue_static_storage - pointer to queue static storage buffer
+ * @param queue_static_context - pointer to queue static context
+ *
+ * @return - status of function execution
+ */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_queue(void **queue,
+                         int32_t length,
+                         int32_t element_size,
+                         uint8_t *queue_static_storage,
+                         rpmsg_static_queue_ctxt *queue_static_context)
+#else
+int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
+#endif
+{
+    struct k_msgq *queue_ptr = ((void *)0);
+    char *msgq_buffer_ptr    = ((void *)0);
+
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    queue_ptr       = (struct k_msgq *)queue_static_context;
+    msgq_buffer_ptr = (char *)queue_static_storage;
+#else
+    queue_ptr       = (struct k_msgq *)env_allocate_memory(sizeof(struct k_msgq));
+    msgq_buffer_ptr = (char *)env_allocate_memory(length * element_size);
+#endif
+    if ((queue_ptr == ((void *)0)) || (msgq_buffer_ptr == ((void *)0)))
+    {
+        return -1;
+    }
+    k_msgq_init(queue_ptr, msgq_buffer_ptr, element_size, length);
+    /* Becasue k_msgq_init() does not return any status, we do not know if all is OK or not.
+       If something would not be OK dynamically allocated memory has to be freed here. */
+
+    *queue = (void *)queue_ptr;
+    return 0;
+}
+
+/*!
+ * env_delete_queue
+ *
+ * Deletes the message queue.
+ *
+ * @param queue - queue to delete
+ */
+
+void env_delete_queue(void *queue)
+{
+    k_msgq_purge((struct k_msgq *)queue);
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
+    env_free_memory(((struct k_msgq *)queue)->buffer_start);
+    env_free_memory(queue);
+#endif
+}
+
+/*!
+ * env_put_queue
+ *
+ * Put an element in a queue.
+ *
+ * @param queue - queue to put element in
+ * @param msg - pointer to the message to be put into the queue
+ * @param timeout_ms - timeout in ms
+ *
+ * @return - status of function execution
+ */
+
+int32_t env_put_queue(void *queue, void *msg, uint32_t timeout_ms)
+{
+    if (env_in_isr() != 0)
+    {
+        timeout_ms = 0; /* force timeout == 0 when in ISR */
+    }
+
+    if (0 == k_msgq_put((struct k_msgq *)queue, msg, timeout_ms))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/*!
+ * env_get_queue
+ *
+ * Get an element out of a queue.
+ *
+ * @param queue - queue to get element from
+ * @param msg - pointer to a memory to save the message
+ * @param timeout_ms - timeout in ms
+ *
+ * @return - status of function execution
+ */
+
+int32_t env_get_queue(void *queue, void *msg, uint32_t timeout_ms)
+{
+    if (env_in_isr() != 0)
+    {
+        timeout_ms = 0; /* force timeout == 0 when in ISR */
+    }
+
+    if (0 == k_msgq_get((struct k_msgq *)queue, msg, timeout_ms))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/*!
+ * env_get_current_queue_size
+ *
+ * Get current queue size.
+ *
+ * @param queue - queue pointer
+ *
+ * @return - Number of queued items in the queue
+ */
+
+int32_t env_get_current_queue_size(void *queue)
+{
+    return k_msgq_num_used_get((struct k_msgq *)queue);
+}

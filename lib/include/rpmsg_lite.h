@@ -2,7 +2,8 @@
  * Copyright (c) 2014, Mentor Graphics Corporation
  * Copyright (c) 2015 Xilinx, Inc.
  * Copyright (c) 2016 Freescale Semiconductor, Inc.
- * Copyright 2016-2020 NXP
+ * Copyright 2016-2022 NXP
+ * Copyright 2021 ACRIOS Systems s.r.o.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,10 +39,10 @@ extern "C" {
 #endif
 
 #include <stddef.h>
+#include "rpmsg_compiler.h"
 #include "virtqueue.h"
 #include "rpmsg_env.h"
 #include "llist.h"
-#include "rpmsg_compiler.h"
 #include "rpmsg_default_config.h"
 
 //! @addtogroup rpmsg_lite
@@ -51,22 +52,23 @@ extern "C" {
  * Definitions
  ******************************************************************************/
 
-#define RL_VERSION "3.1.1" /*!< Current RPMsg Lite version */
+#define RL_VERSION "5.0.0" /*!< Current RPMsg Lite version */
 
 /* Shared memory "allocator" parameters */
 #define RL_WORD_SIZE (sizeof(uint32_t))
-#define RL_WORD_ALIGN_UP(a) \
-    (((((uintptr_t)a) & (RL_WORD_SIZE - 1U)) != 0U) ? ((((uintptr_t)a) & (~(RL_WORD_SIZE - 1U))) + 4U) : ((uintptr_t)a))
+#define RL_WORD_ALIGN_UP(a)                                                                                \
+    (((((uint32_t)(a)) & (RL_WORD_SIZE - 1U)) != 0U) ? ((((uint32_t)(a)) & (~(RL_WORD_SIZE - 1U))) + 4U) : \
+                                                       ((uint32_t)(a)))
 #define RL_WORD_ALIGN_DOWN(a) \
-    (((((uintptr_t)a) & (RL_WORD_SIZE - 1U)) != 0U) ? (((uintptr_t)a) & (~(RL_WORD_SIZE - 1U))) : ((uintptr_t)a))
+    (((((uint32_t)(a)) & (RL_WORD_SIZE - 1U)) != 0U) ? (((uint32_t)(a)) & (~(RL_WORD_SIZE - 1U))) : ((uint32_t)(a)))
 
 /* Definitions for device types , null pointer, etc.*/
 #define RL_SUCCESS    (0)
 #define RL_NULL       ((void *)0)
 #define RL_REMOTE     (0)
 #define RL_MASTER     (1)
-#define RL_TRUE       (1U)
-#define RL_FALSE      (0U)
+#define RL_TRUE       (1UL)
+#define RL_FALSE      (0UL)
 #define RL_ADDR_ANY   (0xFFFFFFFFU)
 #define RL_RELEASE    (0)
 #define RL_HOLD       (1)
@@ -103,7 +105,7 @@ static inline const char *rpmsg_lite_get_err_string(int err)
 }
 
 /* Init flags */
-#define RL_NO_FLAGS (0)
+#define RL_NO_FLAGS (0U)
 
 /*! \typedef rl_ept_rx_cb_t
     \brief Receive callback function type.
@@ -139,10 +141,13 @@ struct rpmsg_lite_ept_static_context
  */
 struct rpmsg_lite_instance
 {
-    struct virtqueue *rvq;              /*!< receive virtqueue */
-    struct virtqueue *tvq;              /*!< transmit virtqueue */
-    struct llist *rl_endpoints;         /*!< linked list of endpoints */
-    LOCK *lock;                         /*!< local RPMsg Lite mutex lock */
+    struct virtqueue *rvq;      /*!< receive virtqueue */
+    struct virtqueue *tvq;      /*!< transmit virtqueue */
+    struct llist *rl_endpoints; /*!< linked list of endpoints */
+    LOCK *lock;                 /*!< local RPMsg Lite mutex lock */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    LOCK_STATIC_CONTEXT lock_static_ctxt; /*!< Static context for lock object creation */
+#endif
     uint32_t link_state;                /*!< state of the link, up/down*/
     char *sh_mem_base;                  /*!< base address of the shared memory */
     uint32_t sh_mem_remaining;          /*!< amount of remaining unused buffers in shared memory */
@@ -155,6 +160,7 @@ struct rpmsg_lite_instance
 #if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
     struct vq_static_context vq_ctxt[2];
 #endif
+    uint32_t link_id; /*!< linkID of this rpmsg_lite instance */
 };
 
 /*******************************************************************************
@@ -299,12 +305,24 @@ int32_t rpmsg_lite_send(struct rpmsg_lite_instance *rpmsg_lite_dev,
 /*!
  * @brief Function to get the link state
  *
- * @param rpmsg_lite_dev    RPMsg-Lite instance
+ * @param rpmsg_lite_dev    RPMsg-Lite instance pointer
  *
- * @return True when link up, false when down.
+ * @return RL_TRUE when link up, RL_FALSE when down.
  *
  */
-int32_t rpmsg_lite_is_link_up(struct rpmsg_lite_instance *rpmsg_lite_dev);
+uint32_t rpmsg_lite_is_link_up(struct rpmsg_lite_instance *rpmsg_lite_dev);
+
+/*!
+ * @brief Function to wait until the link is up. Returns RL_TRUE
+ * once the link_state is set or RL_FALSE in case of timeout.
+ *
+ * @param rpmsg_lite_dev    RPMsg-Lite instance pointer
+ * @param timeout           Timeout in ms, 0 if nonblocking
+ *
+ * @return RL_TRUE when link up, RL_FALSE when timeout.
+ *
+ */
+uint32_t rpmsg_lite_wait_for_link_up(struct rpmsg_lite_instance *rpmsg_lite_dev, uint32_t timeout);
 
 #if defined(RL_API_HAS_ZEROCOPY) && (RL_API_HAS_ZEROCOPY == 1)
 

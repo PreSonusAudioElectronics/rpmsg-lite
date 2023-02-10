@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 NXP
+ * Copyright 2020-2022 NXP
  * All rights reserved.
  *
  *
@@ -18,12 +18,12 @@
  *
  *
  **************************************************************************/
+#include "rpmsg_compiler.h"
 #include "rpmsg_env.h"
 #include "tx_api.h"
 #include "tx_event_flags.h"
 #include "rpmsg_platform.h"
 #include "fsl_common.h"
-#include "rpmsg_compiler.h"
 #include "fsl_component_mem_manager.h"
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +31,7 @@
 
 static int32_t env_init_counter = 0;
 static TX_SEMAPHORE env_sema;
+static TX_EVENT_FLAGS_GROUP event_group;
 
 /* RL_ENV_MAX_MUTEX_COUNT is an arbitrary count greater than 'count'
    if the inital count is 1, this function behaves as a mutex
@@ -67,6 +68,43 @@ static int32_t env_in_isr(void)
 }
 
 /*!
+ * env_wait_for_link_up
+ *
+ * Wait until the link_state parameter of the rpmsg_lite_instance is set.
+ * Utilize events to avoid busy loop implementation.
+ *
+ */
+uint32_t env_wait_for_link_up(volatile uint32_t *link_state, uint32_t link_id, uint32_t timeout_ms)
+{
+    if (*link_state != 1U)
+    {
+        if (TX_SUCCESS == tx_event_flags_get(&event_group, (1UL << link_id), TX_AND, NULL, timeout_ms))
+        {
+            return 1U;
+        }
+        else
+        {
+            return 0U;
+        }
+    }
+    else
+    {
+        return 1U;
+    }
+}
+
+/*!
+ * env_tx_callback
+ *
+ * Set event to notify task waiting in env_wait_for_link_up().
+ *
+ */
+void env_tx_callback(uint32_t link_id)
+{
+    tx_event_flags_set(&event_group, (1UL << link_id), TX_OR);
+}
+
+/*!
  * env_init
  *
  * Initializes OS/ThreadX environment.
@@ -77,7 +115,7 @@ int32_t env_init(void)
     int32_t retval;
     uint32_t regPrimask = DisableGlobalIRQ(); /* stop scheduler */
 
-    // verify 'env_init_counter'
+    /* verify 'env_init_counter' */
     RL_ASSERT(env_init_counter >= 0);
     if (env_init_counter < 0)
     {
@@ -85,15 +123,16 @@ int32_t env_init(void)
         return -1;
     }
     env_init_counter++;
-    // multiple call of 'env_init' - return ok
+    /* multiple call of 'env_init' - return ok */
     if (env_init_counter == 1)
     {
-        // first call
+        /* first call */
         if (TX_SUCCESS != _tx_semaphore_create((TX_SEMAPHORE *)&env_sema, NULL, 0))
         {
             EnableGlobalIRQ(regPrimask);
             return -1;
         }
+        (void)tx_event_flags_create(&event_group, NULL);
         (void)memset(isr_table, 0, sizeof(isr_table));
         EnableGlobalIRQ(regPrimask);
         retval = rp_platform_init();
@@ -129,7 +168,7 @@ int32_t env_deinit(void)
     int32_t retval;
 
     uint32_t regPrimask = DisableGlobalIRQ(); /* stop scheduler */
-    // verify 'env_init_counter'
+    /* verify 'env_init_counter' */
     RL_ASSERT(env_init_counter > 0);
     if (env_init_counter <= 0)
     {
@@ -137,14 +176,16 @@ int32_t env_deinit(void)
         return -1;
     }
 
-    // counter on zero - call platform deinit
+    /* counter on zero - call platform deinit */
     env_init_counter--;
-    // multiple call of 'env_deinit' - return ok
+    /* multiple call of 'env_deinit' - return ok */
     if (env_init_counter <= 0)
     {
-        // last call
+        /* last call */
         (void)memset(isr_table, 0, sizeof(isr_table));
-        retval = rp_platform_deinit();
+        retval = platform_deinit();
+        (void)tx_event_flags_delete(&event_group);
+        (void)memset(&event_group, 0, sizeof(event_group));
         (void)_tx_semaphore_delete((TX_SEMAPHORE *)&env_sema);
         (void)memset(&env_sema, 0, sizeof(env_sema));
         EnableGlobalIRQ(regPrimask);
@@ -297,27 +338,41 @@ void *env_map_patova(uint32_t address)
  * Creates a mutex with the given initial count.
  *
  */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_mutex(void **lock, int32_t count, void *context)
+#else
 int32_t env_create_mutex(void **lock, int32_t count)
+#endif
 {
     TX_SEMAPHORE *semaphore_ptr;
-
-    semaphore_ptr = (TX_SEMAPHORE *)env_allocate_memory(sizeof(TX_SEMAPHORE));
-    if (semaphore_ptr == ((void *)0))
-    {
-        return -1;
-    }
 
     if (count > RL_ENV_MAX_MUTEX_COUNT)
     {
         return -1;
     }
 
-    if (TX_SUCCESS != _tx_semaphore_create((TX_SEMAPHORE *)semaphore_ptr, NULL, count))
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    semaphore_ptr = (TX_SEMAPHORE *)context;
+#else
+    semaphore_ptr = (TX_SEMAPHORE *)env_allocate_memory(sizeof(TX_SEMAPHORE));
+#endif
+    if (semaphore_ptr == ((void *)0))
     {
         return -1;
     }
-    *lock = (void *)semaphore_ptr;
-    return 0;
+
+    if (TX_SUCCESS == _tx_semaphore_create((TX_SEMAPHORE *)semaphore_ptr, NULL, count))
+    {
+        *lock = (void *)semaphore_ptr;
+        return 0;
+    }
+    else
+    {
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
+        env_free_memory(semaphore_ptr);
+#endif
+        return -1;
+    }
 }
 
 /*!
@@ -329,7 +384,9 @@ int32_t env_create_mutex(void **lock, int32_t count)
 void env_delete_mutex(void *lock)
 {
     (void)_tx_semaphore_delete((TX_SEMAPHORE *)lock);
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
     env_free_memory(lock);
+#endif
 }
 
 /*!
@@ -366,10 +423,17 @@ void env_unlock_mutex(void *lock)
  * when signal has to be sent from the interrupt context to main
  * thread context.
  */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_sync_lock(void **lock, int32_t state, void *context)
+{
+    return env_create_mutex(lock, state, context); /* state=1 .. initially free */
+}
+#else
 int32_t env_create_sync_lock(void **lock, int32_t state)
 {
     return env_create_mutex(lock, state); /* state=1 .. initially free */
 }
+#endif
 
 /*!
  * env_delete_sync_lock
@@ -532,17 +596,48 @@ void env_isr(uint32_t vector)
  * @param queue -  pointer to created queue
  * @param length -  maximum number of elements in the queue
  * @param element_size - queue element size in bytes
+ * @param queue_static_storage - pointer to queue static storage buffer
+ * @param queue_static_context - pointer to queue static context
  *
  * @return - status of function execution
  */
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+int32_t env_create_queue(void **queue,
+                         int32_t length,
+                         int32_t element_size,
+                         uint8_t *queue_static_storage,
+                         rpmsg_static_queue_ctxt *queue_static_context)
+#else
 int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
+#endif
 {
-    if (TX_SUCCESS == _tx_queue_create((TX_QUEUE *)*queue, NULL, element_size, NULL, length))
+    struct TX_QUEUE *queue_ptr = ((void *)0);
+    char *msgq_buffer_ptr      = ((void *)0);
+
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    queue_ptr       = (struct k_msgq *)queue_static_context;
+    msgq_buffer_ptr = (char *)queue_static_storage;
+#else
+    queue_ptr       = (struct k_msgq *)env_allocate_memory(sizeof(struct TX_QUEUE));
+    msgq_buffer_ptr = (char *)env_allocate_memory(length * element_size);
+#endif
+    if ((queue_ptr == ((void *)0)) || (msgq_buffer_ptr == ((void *)0)))
     {
+        return -1;
+    }
+
+    if (TX_SUCCESS ==
+        _tx_queue_create((TX_QUEUE *)queue_ptr, NULL, element_size, (VOID *)msgq_buffer_ptr, (length * element_size)))
+    {
+        *queue = (void *)queue_ptr;
         return 0;
     }
     else
     {
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
+        env_free_memory(queue_ptr);
+        env_free_memory(msgq_buffer_ptr);
+#endif
         return -1;
     }
 }
@@ -558,6 +653,9 @@ int32_t env_create_queue(void **queue, int32_t length, int32_t element_size)
 void env_delete_queue(void *queue)
 {
     tx_queue_delete(queue);
+#if !(defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1))
+    env_free_memory(queue);
+#endif
 }
 
 /*!

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 NXP
+ * Copyright 2019-2021 NXP
  * All rights reserved.
  *
  *
@@ -24,7 +24,10 @@
 
 static int32_t isr_counter     = 0;
 static int32_t disable_counter = 0;
-static void *rp_platform_lock;
+static void *platform_lock;
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
+#endif
 
 #if defined(RL_USE_MCMGR_IPC_ISR_HANDLER) && (RL_USE_MCMGR_IPC_ISR_HANDLER == 1)
 static void mcmgr_event_handler(uint16_t vring_idx, void *context)
@@ -91,49 +94,61 @@ static void rp_platform_global_isr_enable(void)
 
 int32_t rp_platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
-    /* Register ISR to environment layer */
-    env_register_isr(vector_id, isr_data);
-
-    env_lock_mutex(rp_platform_lock);
-
-    RL_ASSERT(0 <= isr_counter);
-    if (isr_counter < 2)
+    if (platform_lock != ((void *)0))
     {
+        /* Register ISR to environment layer */
+        env_register_isr(vector_id, isr_data);
+
+        env_lock_mutex(platform_lock);
+
+        RL_ASSERT(0 <= isr_counter);
+        if (isr_counter < 2)
+        {
 #if defined(FSL_FEATURE_MU_SIDE_A)
-        MU_EnableInterrupts(MUA, 1UL << (31UL - vector_id));
+            MU_EnableInterrupts(MUA, 1UL << (31UL - vector_id));
 #elif defined(FSL_FEATURE_MU_SIDE_B)
-        MU_EnableInterrupts(MUB, 1UL << (31UL - vector_id));
+            MU_EnableInterrupts(MUB, 1UL << (31UL - vector_id));
 #endif
+        }
+        isr_counter++;
+
+        env_unlock_mutex(platform_lock);
+        return 0;
     }
-    isr_counter++;
-
-    env_unlock_mutex(rp_platform_lock);
-
-    return 0;
+    else
+    {
+        return -1;
+    }
 }
 
 int32_t rp_platform_deinit_interrupt(uint32_t vector_id)
 {
-    /* Prepare the MU Hardware */
-    env_lock_mutex(rp_platform_lock);
-
-    RL_ASSERT(0 < isr_counter);
-    isr_counter--;
-    if (isr_counter < 2)
+    if (platform_lock != ((void *)0))
     {
+        env_lock_mutex(platform_lock);
+
+        RL_ASSERT(0 < isr_counter);
+        isr_counter--;
+        if (isr_counter < 2)
+        {
 #if defined(FSL_FEATURE_MU_SIDE_A)
-        MU_DisableInterrupts(MUA, 1UL << (31UL - vector_id));
+            MU_DisableInterrupts(MUA, 1UL << (31UL - vector_id));
 #elif defined(FSL_FEATURE_MU_SIDE_B)
-        MU_DisableInterrupts(MUB, 1UL << (31UL - vector_id));
+            MU_DisableInterrupts(MUB, 1UL << (31UL - vector_id));
 #endif
+        }
+
+        /* Unregister ISR from environment layer */
+        env_unregister_isr(vector_id);
+
+        env_unlock_mutex(platform_lock);
+
+        return 0;
     }
-
-    /* Unregister ISR from environment layer */
-    env_unregister_isr(vector_id);
-
-    env_unlock_mutex(rp_platform_lock);
-
-    return 0;
+    else
+    {
+        return -1;
+    }
 }
 
 void rp_platform_notify(uint32_t vector_id)
@@ -328,7 +343,11 @@ int32_t rp_platform_init(void)
 #endif
 
     /* Create lock used in multi-instanced RPMsg */
-    if (0 != env_create_mutex(&rp_platform_lock, 1))
+#if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
+    if (0 != env_create_mutex(&platform_lock, 1, &platform_lock_static_ctxt))
+#else
+    if (0 != env_create_mutex(&platform_lock, 1))
+#endif
     {
         return -1;
     }
