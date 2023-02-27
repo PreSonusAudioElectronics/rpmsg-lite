@@ -54,7 +54,7 @@ uintptr_t platform_vatopa(void *addr);
 void *platform_patova(uintptr_t addr);
 
 /* platform init/deinit */
-int32_t platform_init(void);
+int32_t platform_init(void* env);
 int32_t platform_deinit(void);
 
 #endif /* RPMSG_PLATFORM_H_ */

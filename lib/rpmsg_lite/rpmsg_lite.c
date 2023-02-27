@@ -180,7 +180,7 @@ static void rpmsg_lite_tx_callback(struct virtqueue *vq)
 
     RL_ASSERT(rpmsg_lite_dev != RL_NULL);
     rpmsg_lite_dev->link_state = 1U;
-    env_tx_callback(rpmsg_lite_dev->link_id);
+    env_tx_callback(rpmsg_lite_dev);
 }
 
 /****************************************************************************
@@ -376,12 +376,7 @@ static const struct virtqueue_ops remote_vq_ops = {
 /* helper function for virtqueue notification */
 static void virtqueue_notify(struct virtqueue *vq)
 {
-#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-    struct rpmsg_lite_instance *inst = vq->priv;
-    platform_notify(inst->env ? env_get_platform_context(inst->env) : RL_NULL, vq->vq_queue_index);
-#else
     platform_notify(vq->vq_queue_index);
-#endif
 }
 
 /*************************************************
@@ -554,7 +549,7 @@ void rpmsg_lite_wait_for_link_up(struct rpmsg_lite_instance *rpmsg_lite_dev)
         return;
     }
 
-    env_wait_for_link_up(&rpmsg_lite_dev->link_state, rpmsg_lite_dev->link_id);
+    env_wait_for_link_up(rpmsg_lite_dev->env, &rpmsg_lite_dev->link_state, rpmsg_lite_dev->link_id);
 }
 
 /*!

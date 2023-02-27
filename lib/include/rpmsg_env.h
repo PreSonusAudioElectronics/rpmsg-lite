@@ -85,6 +85,9 @@
 #include "rpmsg_env_specific.h"
 #include "rpmsg_platform.h"
 
+
+typedef void (*rl_int_handler_t)(void *priv_data);
+
 /*!
  * env_init
  *
@@ -192,9 +195,9 @@ int32_t env_strncmp(char *dest, const char *src, uint32_t len);
  * @return  - physical address
  */
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-uint32_t env_map_vatopa(void *env, void *address);
+uintptr_t env_map_vatopa(void *env, void *address);
 #else
-uint32_t env_map_vatopa(void *address);
+uintptr_t env_map_vatopa(void *address);
 #endif
 
 /*!
@@ -209,9 +212,9 @@ uint32_t env_map_vatopa(void *address);
  *
  */
 #if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-void *env_map_patova(void *env, uint32_t address);
+void *env_map_patova(void *env, uintptr_t address);
 #else
-void *env_map_patova(uint32_t address);
+void *env_map_patova(uintptr_t address);
 #endif
 
 /*!
@@ -392,6 +395,16 @@ void env_unregister_isr(void *env, uint32_t vector_id);
 void env_unregister_isr(uint32_t vector_id);
 #endif
 
+
+/*!
+ * \brief Register a handler for an interrupt
+ * 
+ * \param data 
+ * \return int 
+ */
+int env_register_isr_handler (uint32_t irq_num, rl_int_handler_t, void *data);
+
+
 /*!
  * env_enable_interrupt
  *
@@ -457,7 +470,14 @@ void env_disable_interrupt(uint32_t vector_id);
 #define SHARED_MEM (1 << 6)
 #define TLB_MEM    (1 << 7)
 
-void env_map_memory(uint32_t pa, uint32_t va, uint32_t size, uint32_t flags);
+/* Ordering */
+#define RL_MEM_NGNRE (1 << 8)
+
+/* Access */
+#define RL_MEM_PERM_RW (1 << 9)
+
+
+void env_map_memory(uintptr_t pa, void **va, uint32_t size, uint32_t flags);
 
 /*!
  * env_get_timestamp
@@ -613,15 +633,20 @@ int32_t env_deinit_interrupt(void *env, int32_t vq_id);
  * @param link_state  Pointer to the link_state parameter of the rpmsg_lite_instance structure
  * @param link_id     Link ID used to define the rpmsg-lite instance, see rpmsg_platform.h
  */
+
+#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
+void env_wait_for_link_up(void* env, volatile uint32_t *link_state, uint32_t link_id);
+#else
 void env_wait_for_link_up(volatile uint32_t *link_state, uint32_t link_id);
+#endif
 
 /*!
  * env_tx_callback
  *
  * Called from rpmsg_lite_tx_callback() to allow unblocking of env_wait_for_link_up()
+ * rpmsg_lite_instance must be passed as void* due to whacky organization of code base
  *
- * @param link_id     Link ID used to define the rpmsg-lite instance, see rpmsg_platform.h
  */
-void env_tx_callback(uint32_t link_id);
+void env_tx_callback(void *rpmsg_lite_dev);
 
 #endif /* RPMSG_ENV_H_ */

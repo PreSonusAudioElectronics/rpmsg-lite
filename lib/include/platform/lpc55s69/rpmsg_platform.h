@@ -53,7 +53,11 @@ uint32_t platform_vatopa(void *addr);
 void *platform_patova(uint32_t addr);
 
 /* platform init/deinit */
+#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
+int32_t platform_init(void *env);
+#else
 int32_t platform_init(void);
+#endif
 int32_t platform_deinit(void);
 
 #endif /* RPMSG_PLATFORM_H_ */

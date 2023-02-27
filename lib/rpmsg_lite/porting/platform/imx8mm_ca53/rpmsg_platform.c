@@ -9,13 +9,11 @@
 #include <string.h>
 #include "rpmsg_platform.h"
 #include "rpmsg_env.h"
-#include "irq.h"
-#include "FreeRTOS.h"
 
 #include "fsl_device_registers.h"
 
-#if defined(RL_USE_ENVIRONMENT_CONTEXT) && (RL_USE_ENVIRONMENT_CONTEXT == 1)
-#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 0"
+#if !defined(RL_USE_ENVIRONMENT_CONTEXT) || (RL_USE_ENVIRONMENT_CONTEXT == 0)
+#error "This RPMsg-Lite port requires RL_USE_ENVIRONMENT_CONTEXT set to 1"
 #endif
 
 #ifndef RL_SGIMBOX_BASE
@@ -27,6 +25,7 @@
 #define RL_SGIMBOX_TARGET_CORE	(0)
 #endif
 
+/* Make this a config parameter */
 #ifndef RL_SGIMBOX_IRQ
 /* Define RL_SGIMBOX_IRQ in applications' rpmsg_config.h, otherwise Software10_IRQn will be used by default */
 #define RL_SGIMBOX_IRQ	Software10_IRQn
@@ -68,6 +67,12 @@ static void *platform_lock;
 static LOCK_STATIC_CONTEXT platform_lock_static_ctxt;
 #endif
 
+static void *g_sgimbox_base_virt = NULL;
+
+/* Store env to use when invoking env_ functions */
+static void *g_env = NULL;
+
+
 static void sgi_mbox_handler(void *data)
 {
     struct sgi_mbox *base = (struct sgi_mbox *)data;
@@ -82,14 +87,15 @@ static void sgi_mbox_handler(void *data)
     base->status &= ~(RX_CH_BIT(RPMSG_SGI_MBOX_CHANNEL));
     __DSB();
 
-    env_isr(vector_id >> 16);
+    env_isr(g_env, vector_id >> 16);
 }
 
 static void sgi_mailbox_init(struct sgi_mbox *base)
 {
     /* Clear status register */
     base->status = 0;
-    irq_register(RL_SGIMBOX_IRQ, sgi_mbox_handler, base, (portLOWEST_USABLE_INTERRUPT_PRIORITY - 1) << portPRIORITY_SHIFT);
+    int status = env_register_isr_handler (RL_SGIMBOX_IRQ, sgi_mbox_handler, base);
+    RL_ASSERT (status == 0);
     GIC_EnableIRQ(RL_SGIMBOX_IRQ);
 }
 
@@ -124,6 +130,7 @@ static void platform_global_isr_enable(void)
     __asm volatile ( "ISB SY" );
 }
 
+#if 0
 int32_t platform_init_interrupt(uint32_t vector_id, void *isr_data)
 {
     env_lock_mutex(platform_lock);
@@ -143,13 +150,14 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
 
     return 0;
 }
+#endif
 
 void platform_notify(uint32_t vector_id)
 {
     uint32_t msg = (uint32_t)(vector_id << 16);
 
     env_lock_mutex(platform_lock);
-    sgi_mbox_sendmsg((struct sgi_mbox *)RL_SGIMBOX_BASE, RPMSG_SGI_MBOX_CHANNEL, msg);
+    sgi_mbox_sendmsg((struct sgi_mbox *)g_sgimbox_base_virt, RPMSG_SGI_MBOX_CHANNEL, msg);
     env_unlock_mutex(platform_lock);
 }
 
@@ -178,19 +186,6 @@ void platform_time_delay(uint32_t num_msec)
     }
 }
 
-/**
- * platform_in_isr
- *
- * Return whether CPU is processing IRQ
- *
- * @return True for IRQ, false otherwise.
- *
- */
-int32_t platform_in_isr(void)
-{
-    /* This is only working for FreeRTOS */
-    return (ullPortInterruptNesting > 0);
-}
 
 /**
  * platform_interrupt_enable
@@ -211,7 +206,7 @@ int32_t platform_interrupt_enable(uint32_t vector_id)
 
     if (disable_counter == 0)
     {
-	GIC_EnableIRQ(RL_SGIMBOX_IRQ);
+	    GIC_EnableIRQ(RL_SGIMBOX_IRQ);
     }
     platform_global_isr_enable();
 
@@ -237,7 +232,7 @@ int32_t platform_interrupt_disable(uint32_t vector_id)
        if counter is set - the interrupts are disabled */
     if (disable_counter == 0)
     {
-	GIC_DisableIRQ(RL_SGIMBOX_IRQ);
+	    env_disable_interrupt(g_env, RL_SGIMBOX_IRQ);
     }
     disable_counter++;
     platform_global_isr_enable();
@@ -302,9 +297,15 @@ void *platform_patova(uintptr_t addr)
  *
  * platform/environment init
  */
-int32_t platform_init(void)
+
+int32_t platform_init(void *env)
 {
-    sgi_mailbox_init((struct sgi_mbox *)RL_SGIMBOX_BASE);
+    RL_ASSERT (!g_env);
+    g_env = env;
+    env_map_memory (RL_SGIMBOX_BASE, &g_sgimbox_base_virt, RL_SGIMBOX_MAP_SIZE, 
+        WB_CACHE | RL_MEM_NGNRE | RL_MEM_PERM_RW);
+    RL_ASSERT (g_sgimbox_base_virt);
+    sgi_mailbox_init((struct sgi_mbox *)g_sgimbox_base_virt);
 
     /* Create lock used in multi-instanced RPMsg */
 #if defined(RL_USE_STATIC_API) && (RL_USE_STATIC_API == 1)
