@@ -75,6 +75,7 @@ static void *g_env = NULL;
 
 static void sgi_mbox_handler(void *data)
 {
+    RL_LOG_WARN ("%s(): entry\n", __func__);
     struct sgi_mbox *base = (struct sgi_mbox *)data;
     uint32_t vector_id;
 
@@ -92,6 +93,7 @@ static void sgi_mbox_handler(void *data)
 
 static void sgi_mailbox_init(struct sgi_mbox *base)
 {
+    RL_LOG_DEBUG ("%s(): entry\n", __func__);
     /* Clear status register */
     base->status = 0;
     int status = env_register_isr_handler (RL_SGIMBOX_IRQ, sgi_mbox_handler, base);
@@ -154,6 +156,7 @@ int32_t platform_deinit_interrupt(uint32_t vector_id)
 
 void platform_notify(uint32_t vector_id)
 {
+    RL_LOG_WARN ("%s(): entry\n", __func__);
     uint32_t msg = (uint32_t)(vector_id << 16);
 
     env_lock_mutex(platform_lock);

@@ -107,6 +107,7 @@ void env_tx_callback(void *rpmsg_lite_dev)
  */
 int32_t env_init(void **env_context, void *env_init_data)
 {
+    RL_LOG_DEBUG ("%s:%s: entry\n", __FILENAME__, __func__);
     int32_t retval;
     rl_env_t* env = *(rl_env_t**)env_context;
     bool needToAllocate = false;
@@ -120,6 +121,7 @@ int32_t env_init(void **env_context, void *env_init_data)
     if (needToAllocate)
     {
         /* first call */
+        RL_LOG_INFO ("Starting first RpmsgLite initialization\n");
         needToAllocate = false;
         k_sched_unlock();
 
@@ -170,7 +172,10 @@ int32_t env_init(void **env_context, void *env_init_data)
 
         retval = platform_init(env);
         
+        *env_context = env;
         env->initialized = true;
+
+        RL_LOG_INFO ("RpmsgLite initialized\n");
         k_sem_give(&(env->sema));
 
         return retval;
